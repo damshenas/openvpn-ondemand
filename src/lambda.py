@@ -17,7 +17,7 @@ confdir=/tmp/openvpn
 ovpnport=1194
 domain={}
 user=user1
-dimage=damshenas/openvpn
+dimage=damshenas/openvpn:arm64
 
 mkdir -p $confdir
 docker pull $dimage
