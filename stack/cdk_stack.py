@@ -2,6 +2,7 @@ from aws_cdk import (
     aws_s3 as _s3,
     aws_iam as _iam,
     aws_ssm as _ssm,
+    aws_ec2 as _ec2,
     Stack
 )
 
@@ -119,6 +120,38 @@ class CdkStack(Stack):
                     'method.response.header.Access-Control-Allow-Origin': True,
                 }
             }])
+
+
+        ### VPC
+        ovod_vpc = _ec2.Vpc(self, 'ovod_vpc',
+            cidr = '10.10.0.0/24',
+            max_azs = 2,
+            enable_dns_hostnames = True,
+            enable_dns_support = True, 
+            subnet_configuration=[
+                _ec2.SubnetConfiguration(
+                    name = 'Public-Subent',
+                    subnet_type = _ec2.SubnetType.PUBLIC,
+                    cidr_mask = 26
+                )
+            ],
+            nat_gateways = 0,
+        )
+
+        openvpn_builder_lambda.add_environment('vpc_subnet_id', ovod_vpc.public_subnets[0].subnet_id)
+
+        ### security group
+        security_group = _ec2.SecurityGroup(self, "ovod_ec2_security_group",
+            vpc = ovod_vpc,
+            allow_all_outbound = True
+        )
+
+        security_group.add_ingress_rule(
+            _ec2.Peer.any_ipv4(),
+            _ec2.Port.udp(1194),
+        )
+
+        openvpn_builder_lambda.add_environment('security_group_id', security_group.security_group_id)
 
     def add_cors_options(self, apigw_resource):
         apigw_resource.add_method('OPTIONS', MockIntegration(
