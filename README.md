@@ -1,5 +1,5 @@
 
-# Welcome to your CDK Python project!
+# Open VPN On-Demand (OVOD)
 
 This is a blank project for Python development with CDK.
 
