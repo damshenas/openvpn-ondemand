@@ -47,7 +47,7 @@ class CdkStack(Stack):
         ### IAM policies
         ovod_lambda_policy = _iam.PolicyStatement(
             effect=_iam.Effect.ALLOW, 
-            resources=['*'],
+            resources=['*'], #TBU not secure
             actions=[
                 "ec2:RunInstances", 
                 "ec2:TerminateInstances", 
@@ -61,23 +61,28 @@ class CdkStack(Stack):
                 "ec2:DisassociateAddress",
                 "ec2:DescribeRegions",
                 "ec2:DescribeAvailabilityZones",
-                "iam:PassRole"
+                "iam:PassRole",
+                "s3:ListBucket"
             ])
 
         ovod_ec2_policy = _iam.PolicyStatement(
             effect=_iam.Effect.ALLOW, 
-            resources=['*'],
+            resources=['*'], #TBU not secure
             actions=[
                 "s3:GetObjectAcl",
                 "s3:GetObject"            
             ])
 
-        ### IAM roles
+        ### IAM roles instance profile
         ovod_ec2_instance_role = _iam.Role(self, "ovod_ec2_instance_role",
             role_name="ovod_ec2_instance_role",
             assumed_by=_iam.ServicePrincipal("ec2.amazonaws.com"))
 
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy)
+
+        ovod_ec2_instance_profile = _iam.CfnInstanceProfile(self, "ovod_ec2_instance_profile",
+            roles=[ovod_ec2_instance_role.role_name],
+        )
 
         ### api gateway core
         api_gateway = RestApi(self, 'ovod_APIGW', rest_api_name='OpenVPNOnDemand')
@@ -93,7 +98,7 @@ class CdkStack(Stack):
                 "artifacts_bucket": artifacts_bucket.bucket_name,
                 "ssm_domain_name": ssm_domain_name.parameter_name,
                 "ssm_ddns_update_key": ssm_ddns_update_url.parameter_name,
-                "ovod_ec2_instance_role": ovod_ec2_instance_role.role_arn
+                "ovod_ec2_instance_role": ovod_ec2_instance_profile.attr_arn
             },
             handler="lambda.handler",
             code=Code.from_asset("./src"))
