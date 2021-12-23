@@ -17,8 +17,8 @@ dimage=damshenas/openvpn:arm64
 mkdir -p $confdir
 docker pull $dimage
 docker run -v $confdir:/etc/openvpn --rm $dimage ovpn_genconfig -u udp://$domain
-docker run -v $confdir:/etc/openvpn --rm -it -e "EASYRSA_BATCH=1" -e "EASYRSA_REQ_CN=My CN" $dimage ovpn_initpki nopass
+docker run -v $confdir:/etc/openvpn --rm -i -e "EASYRSA_BATCH=1" -e "EASYRSA_REQ_CN=My CN" $dimage ovpn_initpki nopass
 docker run -v $confdir:/etc/openvpn -d -p $ovpnport:$ovpnport/udp --cap-add=NET_ADMIN $dimage
-docker run -v $confdir:/etc/openvpn --rm -it $dimage easyrsa build-client-full $user nopass
+docker run -v $confdir:/etc/openvpn --rm -i $dimage easyrsa build-client-full $user nopass
 docker run -v $confdir:/etc/openvpn --rm $dimage ovpn_getclient $user > $user.ovpn
 docker run -v $confdir:/etc/openvpn --rm $dimage ovpn_listclients | grep $user

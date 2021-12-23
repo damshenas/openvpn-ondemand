@@ -65,12 +65,22 @@ class CdkStack(Stack):
                 "s3:ListBucket"
             ])
 
-        ovod_ec2_policy = _iam.PolicyStatement(
+        ovod_ec2_policy_scripts = _iam.PolicyStatement(
             effect=_iam.Effect.ALLOW, 
-            resources=['*'], #TBU not secure
+            resources=[
+                "{}/scripts".format(artifacts_bucket.bucket_arn)
+            ],
             actions=[
-                "s3:GetObjectAcl",
-                "s3:GetObject"            
+                "s3:GetObject",
+            ])
+
+        ovod_ec2_policy_profiles = _iam.PolicyStatement(
+            effect=_iam.Effect.ALLOW, 
+            resources=[
+                "{}/profiles".format(artifacts_bucket.bucket_arn)
+            ],
+            actions=[
+                "s3:PutObject",
             ])
 
         ### IAM roles instance profile
@@ -78,7 +88,8 @@ class CdkStack(Stack):
             role_name="ovod_ec2_instance_role",
             assumed_by=_iam.ServicePrincipal("ec2.amazonaws.com"))
 
-        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy)
+        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_scripts)
+        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_profiles)
 
         ovod_ec2_instance_profile = _iam.CfnInstanceProfile(self, "ovod_ec2_instance_profile",
             roles=[ovod_ec2_instance_role.role_name],
