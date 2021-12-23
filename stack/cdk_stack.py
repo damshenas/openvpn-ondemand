@@ -3,7 +3,7 @@ from aws_cdk import (
     aws_iam as _iam,
     aws_ssm as _ssm,
     aws_ec2 as _ec2,
-    Stack
+    Duration, Stack
 )
 
 from aws_cdk.aws_apigateway import (
@@ -35,9 +35,18 @@ class CdkStack(Stack):
             string_value="https://freedns.afraid.org/dynamic/update.php?something", 
             description="Update URL for the DDNS (more info on freedns.afraid.org). Need manual override. Default is None."
         )
-        
+
         ### S3 core
-        artifacts_bucket = _s3.Bucket(self, "ovod-artifacts")
+        lifecycle_rule = _s3.LifecycleRule(
+                enabled=True,
+                expiration=Duration.days(1),
+                abort_incomplete_multipart_upload_after=Duration.days(1),
+                prefix="profiles",
+            )
+
+        artifacts_bucket = _s3.Bucket(self, "ovod-artifacts",
+            lifecycle_rules = [lifecycle_rule]
+        )
 
         artifacts_bucket.add_cors_rule(
             allowed_methods=[_s3.HttpMethods.POST],
@@ -68,7 +77,7 @@ class CdkStack(Stack):
         ovod_ec2_policy_scripts = _iam.PolicyStatement(
             effect=_iam.Effect.ALLOW, 
             resources=[
-                "{}/scripts".format(artifacts_bucket.bucket_arn)
+                "{}/scripts/*".format(artifacts_bucket.bucket_arn)
             ],
             actions=[
                 "s3:GetObject",
@@ -77,10 +86,11 @@ class CdkStack(Stack):
         ovod_ec2_policy_profiles = _iam.PolicyStatement(
             effect=_iam.Effect.ALLOW, 
             resources=[
-                "{}/profiles".format(artifacts_bucket.bucket_arn)
+                "{}/profiles/*".format(artifacts_bucket.bucket_arn)
             ],
             actions=[
                 "s3:PutObject",
+                "s3:DeleteObject",
             ])
 
         ### IAM roles instance profile
@@ -115,6 +125,7 @@ class CdkStack(Stack):
             code=Code.from_asset("./src"))
 
         artifacts_bucket.grant_put(openvpn_builder_lambda, objects_key_pattern="scripts/*")
+        artifacts_bucket.grant_read(openvpn_builder_lambda, objects_key_pattern="profiles/*")
         ssm_domain_name.grant_read(openvpn_builder_lambda)
         ssm_ddns_update_url.grant_read(openvpn_builder_lambda)
         openvpn_builder_lambda.add_to_role_policy(ovod_lambda_policy)

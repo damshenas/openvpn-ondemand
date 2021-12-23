@@ -22,3 +22,29 @@ docker run -v $confdir:/etc/openvpn -d -p $ovpnport:$ovpnport/udp --cap-add=NET_
 docker run -v $confdir:/etc/openvpn --rm -i $dimage easyrsa build-client-full $user nopass
 docker run -v $confdir:/etc/openvpn --rm $dimage ovpn_getclient $user > $user.ovpn
 docker run -v $confdir:/etc/openvpn --rm $dimage ovpn_listclients | grep $user
+
+# upload the openvpn config to s3
+aws s3 cp $user.ovpn s3://ARTIFACTS_S3_BUCKET/profiles/$user.ovpn
+
+# minitor connections
+minutes_without_connection=0
+max_minutes_without_connection=5
+while true
+do
+   no_connections=$(ss -tun src :$ovpnport | grep ESTAB | wc -l)
+
+   if [ "$no_connections" -ge 1 ] 
+      then
+         ((minutes_without_connection=0))
+      else
+         ((minutes_without_connection++))
+   fi  
+
+   if [ "$minutes_without_connection" -ge max_minutes_without_connection ] 
+      then
+         aws s3 rm s3://ARTIFACTS_S3_BUCKET/profiles/$user.ovpn
+         poweroff
+      else
+         sleep 60
+   fi  
+done
