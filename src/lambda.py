@@ -12,19 +12,16 @@ html_response = '<html><body><p>Please <a href="{}"> click here </a> to download
 
 def handler(event, context):
 
-
     bootstrap_script = uplaod_to_s3("bootstrap.sh")
     ddns_script = uplaod_to_s3("ddns.sh")
 
     userdata = file_get_contents("userdata.sh").format(
         artifacts_bucket, ddns_script, update_url, bootstrap_script, domain_name
     )
-    print (userdata)
-        
+       
     run_instance(userdata)
 
     presignedurl = create_presigned_url("profiles/user1.ovpn")
-    print(presignedurl)
 
     return {
         'statusCode': 200,
@@ -51,26 +48,16 @@ def check_s3_obj(target_key):
     )
     return objs['KeyCount']
 
-def terminate_instance():
-    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.terminate_instances
-    pass
-
-def check_if_instance_exists():
-
+def check_if_instance_exists(name): # name example: *OpenVPN*
     response = ec2_client.describe_instances(
-        Filters=[
-            {
-                'Name': 'string',
-                'Values': [
-                    'string',
-                ]
-            },
-        ]
-    )
+        Filters=[{'Name': 'tag:Name', 'Values': [name]}])
 
+    if len(response["Reservations"]) > 0:
+        for reservation in response["Reservations"]:
+            for instance in reservation["Instances"]:
+                if instance["State"]["Name"] == "running":  return True
 
-    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
-    pass
+    return False
 
 def create_presigned_url(key_name):
     return s3_client.generate_presigned_url('get_object', 
