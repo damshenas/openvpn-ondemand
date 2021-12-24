@@ -1,4 +1,4 @@
-import json, boto3, os
+import boto3, os
 
 ssm_client = boto3.client('ssm', 'us-east-1')
 ec2_client = boto3.client('ec2','us-east-1')
@@ -8,31 +8,23 @@ domain_name = ssm_client.get_parameter(Name=os.environ['ssm_domain_name'])['Para
 update_url = ssm_client.get_parameter(Name=os.environ['ssm_ddns_update_key'])['Parameter']['Value']
 ec2_role = os.environ['ovod_ec2_instance_role']
 artifacts_bucket = os.environ['artifacts_bucket']
-html_response = '<html><body><p>Please <a href="{}"> click here </a> to download the openvpn config file and then open it with OpenVPN app.</p></body></html>'
 
-def handler(event, context):
+def generate_response_body(message):
+    html_response = """
+        <html><body>
+        <h2>{}</h2>
+        <p>Please <a href="{}"> click here </a> to download the openvpn config file and then open it with OpenVPN app.</p>
+        </body></html>
+    """
+    presignedurl = create_presigned_url("profiles/user1.ovpn")
+    return html_response.format(message, presignedurl)
 
-
+def generate_ec2_userdata():
     bootstrap_script = uplaod_to_s3("bootstrap.sh")
     ddns_script = uplaod_to_s3("ddns.sh")
-
-    userdata = file_get_contents("userdata.sh").format(
+    return file_get_contents("userdata.sh").format(
         artifacts_bucket, ddns_script, update_url, bootstrap_script, domain_name
     )
-    print (userdata)
-        
-    run_instance(userdata)
-
-    presignedurl = create_presigned_url("profiles/user1.ovpn")
-    print(presignedurl)
-
-    return {
-        'statusCode': 200,
-        'headers': {
-            'Content-Type': 'text/html'
-        },
-        'body': html_response.format(presignedurl)
-    }
 
 def file_get_contents(filename):
     with open(filename) as f:
@@ -40,7 +32,7 @@ def file_get_contents(filename):
 
 def uplaod_to_s3(file_path):
     target_key = "scripts/{}".format(file_path.split('/')[-1])
-    # if check_s3_obj(target_key): return target_key # if exist skip uploading scripts
+    # if check_s3_obj(target_key): return target_key # if exist skip uploading scripts # should we?
     s3_client.upload_file(file_path, artifacts_bucket, target_key)
     return target_key
 
@@ -51,26 +43,17 @@ def check_s3_obj(target_key):
     )
     return objs['KeyCount']
 
-def terminate_instance():
-    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.terminate_instances
-    pass
-
-def check_if_instance_exists():
-
+def check_if_instance_exists(name): # name example: *OpenVPN*
     response = ec2_client.describe_instances(
-        Filters=[
-            {
-                'Name': 'string',
-                'Values': [
-                    'string',
-                ]
-            },
-        ]
-    )
+        Filters=[{'Name': 'tag:Name', 'Values': [name]}])
 
+    if len(response["Reservations"]) > 0:
+        for reservation in response["Reservations"]:
+            for instance in reservation["Instances"]:
+                if instance["State"]["Name"] == "running":  return "running"
+                if instance["State"]["Name"] == "pending":  return "pending"
 
-    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
-    pass
+    return False
 
 def create_presigned_url(key_name):
     return s3_client.generate_presigned_url('get_object', 
@@ -116,7 +99,7 @@ def run_instance(userdata):
 
         IamInstanceProfile={'Arn': ec2_role},
 
-        # InstanceMarketOptions={
+        # InstanceMarketOptions={ # to save costs
         #     'MarketType': 'spot',
         #     'SpotOptions': {
         #         'MaxPrice': 'string',

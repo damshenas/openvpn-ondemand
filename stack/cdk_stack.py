@@ -25,6 +25,7 @@ class CdkStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
         ## SSM Param Store
         ssm_domain_name = _ssm.StringParameter(self, "OVOD_DOMAIN_NAME",
             string_value="something.something.com", 
@@ -121,7 +122,7 @@ class CdkStack(Stack):
                 "ssm_ddns_update_key": ssm_ddns_update_url.parameter_name,
                 "ovod_ec2_instance_role": ovod_ec2_instance_profile.attr_arn
             },
-            handler="lambda.handler",
+            handler="main.handler",
             code=Code.from_asset("./src"))
 
         artifacts_bucket.grant_put(openvpn_builder_lambda, objects_key_pattern="scripts/*")

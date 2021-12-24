@@ -4,6 +4,8 @@ package-lock.json
 .venv
 *.egg-info
 notes
+sample*
+test*
 
 # CDK asset staging directory
 .cdk.staging
