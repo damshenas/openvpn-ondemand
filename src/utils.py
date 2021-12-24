@@ -50,7 +50,8 @@ def check_if_instance_exists(name): # name example: *OpenVPN*
     if len(response["Reservations"]) > 0:
         for reservation in response["Reservations"]:
             for instance in reservation["Instances"]:
-                if instance["State"]["Name"] == "running":  return True
+                if instance["State"]["Name"] == "running":  return "running"
+                if instance["State"]["Name"] == "pending":  return "pending"
 
     return False
 
