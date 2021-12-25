@@ -9,16 +9,6 @@ update_url = ssm_client.get_parameter(Name=os.environ['ssm_ddns_update_key'])['P
 ec2_role = os.environ['ovod_ec2_instance_role']
 artifacts_bucket = os.environ['artifacts_bucket']
 
-def generate_response_body(message):
-    html_response = """
-        <html><body>
-        <h2>{}</h2>
-        <p>Please <a href="{}"> click here </a> to download the openvpn config file and then open it with OpenVPN app.</p>
-        </body></html>
-    """
-    presignedurl = create_presigned_url("profiles/user1.ovpn")
-    return html_response.format(message, presignedurl)
-
 def generate_ec2_userdata():
     bootstrap_script = uplaod_to_s3("bootstrap.sh")
     ddns_script = uplaod_to_s3("ddns.sh")
@@ -55,7 +45,7 @@ def check_if_instance_exists(name): # name example: *OpenVPN*
 
     return False
 
-def create_presigned_url(key_name):
+def gen_s3_url(key_name): #create presigned url
     return s3_client.generate_presigned_url('get_object', 
         Params={'Bucket': artifacts_bucket, 'Key': key_name},
         ExpiresIn=1800)

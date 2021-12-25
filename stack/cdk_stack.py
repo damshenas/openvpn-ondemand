@@ -3,6 +3,7 @@ from aws_cdk import (
     aws_iam as _iam,
     aws_ssm as _ssm,
     aws_ec2 as _ec2,
+    aws_apigateway as _apigw,
     Duration, Stack
 )
 
@@ -107,10 +108,10 @@ class CdkStack(Stack):
         )
 
         ### api gateway core
-        api_gateway = RestApi(self, 'ovod_APIGW', rest_api_name='OpenVPNOnDemand')
-        api_gateway_resource = api_gateway.root.add_resource("ovod")
-        api_gateway_root = api_gateway_resource.add_resource('get')
-        self.add_cors_options(api_gateway_root)
+        # We do not need to set CORS for APIGW as in proxy mode Lambda has to return the relevant headers
+        api_gateway = _apigw.RestApi(self, 'ovod_APIGW', 
+            rest_api_name='OpenVPNOnDemand'
+        )
 
         ### lambda function
         openvpn_builder_lambda = Function(self, "ovod_builder",
@@ -131,24 +132,11 @@ class CdkStack(Stack):
         ssm_ddns_update_url.grant_read(openvpn_builder_lambda)
         openvpn_builder_lambda.add_to_role_policy(ovod_lambda_policy)
 
-        openvpn_builder_lambda_integration = LambdaIntegration(
+        openvpn_builder_lambda_integration = _apigw.LambdaIntegration(
             openvpn_builder_lambda,
-            proxy=True,
-            integration_responses=[{
-                'statusCode': '200',
-               'responseParameters': {
-                   'method.response.header.Access-Control-Allow-Origin': "'*'",
-                }
-            }])
+            proxy=True)
 
-        api_gateway_root.add_method('GET', openvpn_builder_lambda_integration,
-            method_responses=[{
-                'statusCode': '200',
-                'responseParameters': {
-                    'method.response.header.Access-Control-Allow-Origin': True,
-                }
-            }])
-
+        api_gateway.root.add_method('POST', openvpn_builder_lambda_integration)
 
         ### VPC
         ovod_vpc = _ec2.Vpc(self, 'ovod_vpc',
@@ -180,28 +168,3 @@ class CdkStack(Stack):
         )
 
         openvpn_builder_lambda.add_environment('security_group_id', security_group.security_group_id)
-
-    def add_cors_options(self, apigw_resource):
-        apigw_resource.add_method('OPTIONS', MockIntegration(
-            integration_responses=[{
-                'statusCode': '200',
-                'responseParameters': {
-                    'method.response.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
-                    'method.response.header.Access-Control-Allow-Origin': "'*'",
-                    'method.response.header.Access-Control-Allow-Methods': "'GET,OPTIONS'"
-                }
-            }
-            ],
-            passthrough_behavior=PassthroughBehavior.WHEN_NO_MATCH,
-            request_templates={"application/json":"{\"statusCode\":200}"}
-        ),
-        method_responses=[{
-            'statusCode': '200',
-            'responseParameters': {
-                'method.response.header.Access-Control-Allow-Headers': True,
-                'method.response.header.Access-Control-Allow-Methods': True,
-                'method.response.header.Access-Control-Allow-Origin': True,
-                }
-            }
-        ],
-    )
