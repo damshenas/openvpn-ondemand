@@ -17,15 +17,17 @@ def handler(event, context):
     utils.update_last_login(username)
     instance_exists = utils.check_if_instance_exists("*OpenVPN*")
 
+    preSignedUrl = utils.gen_s3_url("profiles/user1.ovpn")
+
     if (instance_exists == "running"): 
-        return make_response(200, {"ready": True, "preSignedUrl": utils.gen_s3_url("profiles/user1.ovpn")})
+        return make_response(200, {"ready": True, "preSignedUrl": preSignedUrl})
     elif (instance_exists == "pending"): 
-        return make_response(201, {"ready": False})
+        return make_response(201, {"ready": False, "preSignedUrl": preSignedUrl})
 
     userdata = utils.generate_ec2_userdata() 
     utils.run_instance(userdata)
 
-    return make_response(202, {"ready": False})
+    return make_response(202, {"ready": False, "preSignedUrl": preSignedUrl})
 
 def make_response(status, response):
     return {

@@ -39,7 +39,12 @@ class CdkStack(Stack):
         artifacts_bucket = _s3.Bucket(self, "ovod-artifacts",
             lifecycle_rules = [lifecycle_rule],
             removal_policy=RemovalPolicy.DESTROY, # NOT recommended for production 
-            auto_delete_objects=True
+            auto_delete_objects=True,
+            block_public_access = _s3.BlockPublicAccess.BLOCK_ALL,
+            cors = [ _s3.CorsRule(
+                allowed_methods=[ _s3.HttpMethods.GET ],
+                allowed_origins=["*"],
+            )]
         )
 
         artifacts_bucket.add_cors_rule(
