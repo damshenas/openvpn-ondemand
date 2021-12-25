@@ -7,6 +7,14 @@ def handler(event, context):
     password = jbody.get("password")
     # need to utilzie the username for creating the profile
 
+    if not username or not password:
+        return make_response(401, {"ready": False})
+
+    authenticated = utils.is_login_valid(username, password)
+    if not authenticated: 
+        return make_response(401, {"ready": False})
+
+    utils.update_last_login(username)
     instance_exists = utils.check_if_instance_exists("*OpenVPN*")
 
     if (instance_exists == "running"): 

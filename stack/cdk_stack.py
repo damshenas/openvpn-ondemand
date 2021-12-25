@@ -1,26 +1,14 @@
+from constructs import Construct
 from aws_cdk import (
+    Duration, Stack, RemovalPolicy,
     aws_s3 as _s3,
     aws_iam as _iam,
     aws_ssm as _ssm,
     aws_ec2 as _ec2,
-    aws_apigateway as _apigw,
-    Duration, Stack
+    aws_lambda as _lambda,
+    aws_dynamodb as _dydb,
+    aws_apigateway as _apigw
 )
-
-from aws_cdk.aws_apigateway import (
-    RestApi,
-    LambdaIntegration,
-    MockIntegration,
-    PassthroughBehavior
-)
-
-from aws_cdk.aws_lambda import (
-    Code,
-    Function,
-    Runtime
-)
-
-from constructs import Construct
 
 class CdkStack(Stack):
 
@@ -32,22 +20,26 @@ class CdkStack(Stack):
             string_value="something.something.com", 
             description="Domain Name for the OpenVPN. Need manual override. Default is None."
         )
+        ssm_domain_name.apply_removal_policy(RemovalPolicy.DESTROY) # NOT recommended for production 
 
         ssm_ddns_update_url = _ssm.StringParameter(self, "OVOD_DDNS_UPDATE_URL",
             string_value="https://freedns.afraid.org/dynamic/update.php?something", 
             description="Update URL for the DDNS (more info on freedns.afraid.org). Need manual override. Default is None."
         )
+        ssm_ddns_update_url.apply_removal_policy(RemovalPolicy.DESTROY) # NOT recommended for production 
 
         ### S3 core
         lifecycle_rule = _s3.LifecycleRule(
                 enabled=True,
                 expiration=Duration.days(1),
                 abort_incomplete_multipart_upload_after=Duration.days(1),
-                prefix="profiles",
+                prefix="profiles"
             )
 
         artifacts_bucket = _s3.Bucket(self, "ovod-artifacts",
-            lifecycle_rules = [lifecycle_rule]
+            lifecycle_rules = [lifecycle_rule],
+            removal_policy=RemovalPolicy.DESTROY, # NOT recommended for production 
+            auto_delete_objects=True
         )
 
         artifacts_bucket.add_cors_rule(
@@ -114,17 +106,18 @@ class CdkStack(Stack):
         )
 
         ### lambda function
-        openvpn_builder_lambda = Function(self, "ovod_builder",
+        openvpn_builder_lambda = _lambda.Function(self, "ovod_builder",
             function_name="ovod_builder",
-            runtime=Runtime.PYTHON_3_7,
+            runtime=_lambda.Runtime.PYTHON_3_7,
             environment={
+                "region": self.region,
                 "artifacts_bucket": artifacts_bucket.bucket_name,
                 "ssm_domain_name": ssm_domain_name.parameter_name,
                 "ssm_ddns_update_key": ssm_ddns_update_url.parameter_name,
-                "ovod_ec2_instance_role": ovod_ec2_instance_profile.attr_arn
+                "ovod_ec2_instance_role": ovod_ec2_instance_profile.attr_arn,
             },
             handler="main.handler",
-            code=Code.from_asset("./src"))
+            code=_lambda.Code.from_asset("./src"))
 
         artifacts_bucket.grant_put(openvpn_builder_lambda, objects_key_pattern="scripts/*")
         artifacts_bucket.grant_read(openvpn_builder_lambda, objects_key_pattern="profiles/*")
@@ -168,3 +161,16 @@ class CdkStack(Stack):
         )
 
         openvpn_builder_lambda.add_environment('security_group_id', security_group.security_group_id)
+
+        ### create dynamo table
+        dynamodb_table = _dydb.Table(
+            self, "openvpn_table",
+            partition_key=_dydb.Attribute(
+                name="username",
+                type=_dydb.AttributeType.STRING
+            ),
+            billing_mode=_dydb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY # NOT recommended for production 
+        )
+        openvpn_builder_lambda.add_environment('dynamodb_table_name', dynamodb_table.table_name)
+        dynamodb_table.grant_read_write_data(openvpn_builder_lambda)

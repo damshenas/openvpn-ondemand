@@ -28,23 +28,24 @@ aws s3 cp $user.ovpn s3://ARTIFACTS_S3_BUCKET/profiles/$user.ovpn
 
 # minitor connections
 minutes_without_connection=0
-max_minutes_without_connection=5
+max_minutes_without_connection=15
+
 while true
 do
-   no_connections=$(ss -tun src :$ovpnport | grep ESTAB | wc -l)
+  no_connections=$(ss -tun src :$ovpnport | grep ESTAB | wc -l)
 
-   if [ "$no_connections" -ge 1 ] 
-      then
-         ((minutes_without_connection=0))
-      else
-         ((minutes_without_connection++))
-   fi  
+  if [ "$no_connections" -ge 1 ]; then
+    ((minutes_without_connection=0))
+  else
+    ((minutes_without_connection++))
+  fi  
 
-   if [ "$minutes_without_connection" -ge max_minutes_without_connection ] 
-      then
-         aws s3 rm s3://ARTIFACTS_S3_BUCKET/profiles/$user.ovpn
-         poweroff
-      else
-         sleep 60
-   fi  
+  if [ "$minutes_without_connection" -ge $max_minutes_without_connection ]; then
+    echo "shutting down. $minutes_without_connection minutes without connection"
+    aws s3 rm s3://ARTIFACTS_S3_BUCKET/profiles/$user.ovpn
+    poweroff
+  else
+    sleep 60
+  fi  
+
 done
