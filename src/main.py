@@ -1,9 +1,10 @@
 import utils, json
 
 def handler(event, context): 
-    body = event.get("body")
-    username = body.get("username")
-    password = body.get("password")
+    sbody = event.get("body")
+    jbody = json.loads(sbody)
+    username = jbody.get("username")
+    password = jbody.get("password")
     # need to utilzie the username for creating the profile
 
     instance_exists = utils.check_if_instance_exists("*OpenVPN*")
