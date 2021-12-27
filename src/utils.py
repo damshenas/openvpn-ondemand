@@ -28,7 +28,7 @@ def file_get_contents(filename):
 
 def uplaod_to_s3(file_path):
     target_key = "scripts/{}".format(file_path.split('/')[-1])
-    if not debug_mode and check_s3_obj(target_key): return target_key # if exist skip uploading scripts # should we?
+    if not debug_mode and check_s3_obj(target_key): return target_key # if exist and not debugging skip uploading scripts
     s3_client.upload_file(file_path, artifacts_bucket, target_key)
     return target_key
 
