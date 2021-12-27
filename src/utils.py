@@ -26,7 +26,7 @@ def file_get_contents(filename):
 
 def uplaod_to_s3(file_path):
     target_key = "scripts/{}".format(file_path.split('/')[-1])
-    # if check_s3_obj(target_key): return target_key # if exist skip uploading scripts # should we?
+    if check_s3_obj(target_key): return target_key # if exist skip uploading scripts # should we?
     s3_client.upload_file(file_path, artifacts_bucket, target_key)
     return target_key
 

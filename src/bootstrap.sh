@@ -1,11 +1,10 @@
 #!/bin/bash
 
 #Installing docker
-sudo yum update -y
-sudo amazon-linux-extras -y install docker
-sudo yum install -y docker
-sudo service docker start
-sudo usermod -a -G docker ec2-user
+yum update -y
+amazon-linux-extras -y install docker
+yum install -y docker conntrack
+service docker start
 
 confdir=/tmp/openvpn
 ovpnport=1194
@@ -32,15 +31,18 @@ max_minutes_without_connection=15
 
 while true
 do
-  no_connections=$(ss -tun src :$ovpnport | grep ESTAB | wc -l)
+  # no_connections=$(ss -tun src :$ovpnport | grep ESTAB | wc -l)
+  # no_users=$(docker exec -it intelligent_mclean cat /tmp/openvpn-status.log | grep user1)
+  # no_connections=$(conntrack -L --proto udp --dport 1194 --status ASSURED)
+  no_connections=$(cat /proc/net/nf_conntrack | grep ASSURED | grep 1194 | wc -l)
 
-  if [ "$no_connections" -ge 1 ]; then
+  if [ $no_connections -ge "1" ]; then
     ((minutes_without_connection=0))
   else
     ((minutes_without_connection++))
   fi  
 
-  if [ "$minutes_without_connection" -ge $max_minutes_without_connection ]; then
+  if [ $minutes_without_connection -ge $max_minutes_without_connection ]; then
     echo "shutting down. $minutes_without_connection minutes without connection"
     aws s3 rm s3://ARTIFACTS_S3_BUCKET/profiles/$user.ovpn
     poweroff
