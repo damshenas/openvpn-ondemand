@@ -64,7 +64,7 @@ class CdkStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_7,
             environment={
                 "region": self.region,
-                "debug_mode": False,
+                "debug_mode": 'false',
                 "artifacts_bucket": artifacts_bucket.bucket_name,
                 "ssm_domain_name": ssm_domain_name.parameter_name,
                 "ssm_ddns_update_key": ssm_ddns_update_url.parameter_name,
