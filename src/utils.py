@@ -13,11 +13,11 @@ ec2_role = os.environ['ovod_ec2_instance_role']
 artifacts_bucket = os.environ['artifacts_bucket']
 dynamodb_table = os.environ['dynamodb_table_name']
 
-def generate_ec2_userdata():
+def generate_ec2_userdata(username):
     bootstrap_script = uplaod_to_s3("bootstrap.sh")
     ddns_script = uplaod_to_s3("ddns.sh")
     return file_get_contents("userdata.sh").format(
-        artifacts_bucket, ddns_script, update_url, bootstrap_script, domain_name
+        artifacts_bucket, ddns_script, update_url, bootstrap_script, domain_name, username
     )
 
 def file_get_contents(filename):

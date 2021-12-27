@@ -24,7 +24,7 @@ def handler(event, context):
     elif (instance_exists == "pending"): 
         return make_response(201, {"ready": False, "preSignedUrl": preSignedUrl})
 
-    userdata = utils.generate_ec2_userdata() 
+    userdata = utils.generate_ec2_userdata(username) 
     utils.run_instance(userdata)
 
     return make_response(202, {"ready": False, "preSignedUrl": preSignedUrl})
