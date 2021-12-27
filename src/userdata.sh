@@ -16,3 +16,5 @@ sed -i "s|USERNAME|{}|" $bootstrap_file
 
 chmod +x $bootstrap_file
 source $bootstrap_file
+
+export debug_more={}

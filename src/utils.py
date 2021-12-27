@@ -12,12 +12,13 @@ update_url = ssm_client.get_parameter(Name=os.environ['ssm_ddns_update_key'])['P
 ec2_role = os.environ['ovod_ec2_instance_role']
 artifacts_bucket = os.environ['artifacts_bucket']
 dynamodb_table = os.environ['dynamodb_table_name']
+debug_mode = 0 if os.environ['debug_mode'] == 'True' else 1
 
 def generate_ec2_userdata(username):
     bootstrap_script = uplaod_to_s3("bootstrap.sh")
     ddns_script = uplaod_to_s3("ddns.sh")
     return file_get_contents("userdata.sh").format(
-        artifacts_bucket, ddns_script, update_url, bootstrap_script, domain_name, username
+        artifacts_bucket, ddns_script, update_url, bootstrap_script, domain_name, username, debug_mode
     )
 
 def file_get_contents(filename):
@@ -26,7 +27,7 @@ def file_get_contents(filename):
 
 def uplaod_to_s3(file_path):
     target_key = "scripts/{}".format(file_path.split('/')[-1])
-    if check_s3_obj(target_key): return target_key # if exist skip uploading scripts # should we?
+    if not debug_mode and check_s3_obj(target_key): return target_key # if exist skip uploading scripts # should we?
     s3_client.upload_file(file_path, artifacts_bucket, target_key)
     return target_key
 
@@ -70,6 +71,7 @@ def gen_s3_url(key_name): #create presigned url
         ExpiresIn=1800)
 
 def run_instance(userdata):
+    KeyName = 'none' if debug_mode else 'n.virginia.def.key'
     return ec2_client.run_instances(
         BlockDeviceMappings=[
             {
@@ -89,7 +91,7 @@ def run_instance(userdata):
 
         SubnetId=os.environ['vpc_subnet_id'],
         UserData=userdata,
-        KeyName="n.virginia.def.key", #just for debugging change the key name. production does not need this.
+        KeyName=KeyName,
 
         DisableApiTermination=False,
 
