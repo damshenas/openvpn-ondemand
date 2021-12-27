@@ -6,6 +6,7 @@ ssm_client = boto3.client('ssm', region)
 ec2_client = boto3.client('ec2',region)
 s3_client = boto3.client('s3',region)
 ddb_client = boto3.client('dynamodb',region)
+ssm_client = boto3.client('ssm',region)
 
 domain_name = ssm_client.get_parameter(Name=os.environ['ssm_domain_name'])['Parameter']['Value']
 update_url = ssm_client.get_parameter(Name=os.environ['ssm_ddns_update_key'])['Parameter']['Value']
@@ -15,10 +16,10 @@ dynamodb_table = os.environ['dynamodb_table_name']
 debug_mode = 0 if os.environ['debug_mode'] == 'true' else 1
 
 def generate_ec2_userdata(username):
-    bootstrap_script = uplaod_to_s3("bootstrap.sh")
-    ddns_script = uplaod_to_s3("ddns.sh")
+    for f in ["bootstrap.sh", "ddns.sh", "profile.sh"]: 
+        uplaod_to_s3(f)
     return file_get_contents("userdata.sh").format(
-        artifacts_bucket, ddns_script, update_url, bootstrap_script, domain_name, username, debug_mode
+        debug_mode, artifacts_bucket, update_url, domain_name, username 
     )
 
 def file_get_contents(filename):
@@ -54,25 +55,31 @@ def update_last_login(username):
     )
 
 def check_if_instance_exists(name): # name example: *OpenVPN*
-    response = ec2_client.describe_instances(
-        Filters=[{'Name': 'tag:Name', 'Values': [name]}])
+    instances = ec2_client.describe_instances( Filters=[{'Name': 'tag:Name', 'Values': [name]}])
 
-    if len(response["Reservations"]) > 0:
-        for reservation in response["Reservations"]:
+    if len(instances["Reservations"]) > 0:
+        for reservation in instances["Reservations"]:
             for instance in reservation["Instances"]:
-                if instance["State"]["Name"] == "running":  return "running"
-                if instance["State"]["Name"] == "pending":  return "pending"
+                if instance["State"]["Name"] == "running":  return ["running", instance["InstanceId"]]
+                if instance["State"]["Name"] == "pending":  return ["pending", instance["InstanceId"]]
 
-    return False
+    return ["", ""]
 
 def gen_s3_url(key_name): #create presigned url
     return s3_client.generate_presigned_url('get_object', 
         Params={'Bucket': artifacts_bucket, 'Key': key_name},
         ExpiresIn=1800)
 
+def add_profile(username, instance_id):
+    return ssm_client.send_command(
+        InstanceIds=[instance_id],
+        DocumentName="AWS-RunShellScript",
+        TimeoutSeconds=300,
+        Comment='Creating profile for user {} in instance {}'.format(username, instance_id),
+        Parameters={'commands': ['source /tmp/profile.sh {}'.format(username)]})
+
 def run_instance(userdata):
-    KeyName = 'none' if debug_mode else 'n.virginia.def.key'
-    return ec2_client.run_instances(
+    instance = ec2_client.run_instances(
         BlockDeviceMappings=[
             {
                 'DeviceName': 'xvdb',
@@ -91,7 +98,7 @@ def run_instance(userdata):
 
         SubnetId=os.environ['vpc_subnet_id'],
         UserData=userdata,
-        KeyName=KeyName,
+        KeyName='n.virginia.def.key',
 
         DisableApiTermination=False,
 
@@ -121,4 +128,7 @@ def run_instance(userdata):
         #         'InstanceInterruptionBehavior': 'hibernate'|'stop'|'terminate'
         #     }
         # },
-    )
+        )
+
+
+    return instance['Instances'][0]['InstanceId']

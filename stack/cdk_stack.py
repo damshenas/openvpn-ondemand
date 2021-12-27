@@ -62,6 +62,7 @@ class CdkStack(Stack):
         openvpn_builder_lambda = _lambda.Function(self, "ovod_builder",
             function_name="ovod_builder",
             runtime=_lambda.Runtime.PYTHON_3_7,
+            timeout=Duration.seconds(10),
             environment={
                 "region": self.region,
                 "debug_mode": 'false',
@@ -145,7 +146,8 @@ class CdkStack(Stack):
                 "ec2:DescribeRegions",
                 "ec2:DescribeAvailabilityZones",
                 "iam:PassRole",
-                "s3:ListBucket"
+                "s3:ListBucket",
+                "ssm:SendCommand"
             ])
 
         ovod_ec2_policy_scripts = _iam.PolicyStatement(
@@ -185,9 +187,12 @@ class CdkStack(Stack):
                 "s3:ListBucket"
             ])
 
-        ### IAM roles instance profile
+        ### IAM roles instance profile 
         ovod_ec2_instance_role = _iam.Role(self, "ovod_ec2_instance_role",
             role_name="ovod_ec2_instance_role",
+            managed_policies=[
+                _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")
+            ],
             assumed_by=_iam.ServicePrincipal("ec2.amazonaws.com"))
 
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_scripts)
