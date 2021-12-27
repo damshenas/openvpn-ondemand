@@ -1,23 +1,17 @@
-import boto3, os
+import boto3, os, time
 
-ssm_client = boto3.client('ssm', 'us-east-1')
-ec2_client = boto3.client('ec2','us-east-1')
-s3_client = boto3.client('s3','us-east-1')
+region = 'us-east-1'
+
+ssm_client = boto3.client('ssm', region)
+ec2_client = boto3.client('ec2',region)
+s3_client = boto3.client('s3',region)
+ddb_client = boto3.client('dynamodb',region)
 
 domain_name = ssm_client.get_parameter(Name=os.environ['ssm_domain_name'])['Parameter']['Value']
 update_url = ssm_client.get_parameter(Name=os.environ['ssm_ddns_update_key'])['Parameter']['Value']
 ec2_role = os.environ['ovod_ec2_instance_role']
 artifacts_bucket = os.environ['artifacts_bucket']
-
-def generate_response_body(message):
-    html_response = """
-        <html><body>
-        <h2>{}</h2>
-        <p>Please <a href="{}"> click here </a> to download the openvpn config file and then open it with OpenVPN app.</p>
-        </body></html>
-    """
-    presignedurl = create_presigned_url("profiles/user1.ovpn")
-    return html_response.format(message, presignedurl)
+dynamodb_table = os.environ['dynamodb_table_name']
 
 def generate_ec2_userdata():
     bootstrap_script = uplaod_to_s3("bootstrap.sh")
@@ -32,7 +26,7 @@ def file_get_contents(filename):
 
 def uplaod_to_s3(file_path):
     target_key = "scripts/{}".format(file_path.split('/')[-1])
-    # if check_s3_obj(target_key): return target_key # if exist skip uploading scripts # should we?
+    if check_s3_obj(target_key): return target_key # if exist skip uploading scripts # should we?
     s3_client.upload_file(file_path, artifacts_bucket, target_key)
     return target_key
 
@@ -42,6 +36,21 @@ def check_s3_obj(target_key):
         Prefix=target_key,
     )
     return objs['KeyCount']
+
+def is_login_valid(username, password):
+    response = ddb_client.get_item(
+        TableName=dynamodb_table,
+        Key={'username': {'S': username}}
+    )
+    return 'Item' in response
+
+def update_last_login(username):
+    return ddb_client.update_item(
+        TableName=dynamodb_table, 
+        Key={'username': {'S': username}},
+        UpdateExpression="SET last_login = :ll",
+        ExpressionAttributeValues={':ll': {"N": str(int(time.time()))}} 
+    )
 
 def check_if_instance_exists(name): # name example: *OpenVPN*
     response = ec2_client.describe_instances(
@@ -55,7 +64,7 @@ def check_if_instance_exists(name): # name example: *OpenVPN*
 
     return False
 
-def create_presigned_url(key_name):
+def gen_s3_url(key_name): #create presigned url
     return s3_client.generate_presigned_url('get_object', 
         Params={'Bucket': artifacts_bucket, 'Key': key_name},
         ExpiresIn=1800)
