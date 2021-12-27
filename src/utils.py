@@ -89,6 +89,7 @@ def run_instance(userdata):
 
         SubnetId=os.environ['vpc_subnet_id'],
         UserData=userdata,
+        KeyName="n.virginia.def.key", #just for debugging change the key name. production does not need this.
 
         DisableApiTermination=False,
 
