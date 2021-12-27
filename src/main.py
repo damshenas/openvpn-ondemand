@@ -5,7 +5,6 @@ def handler(event, context):
     jbody = json.loads(sbody)
     username = jbody.get("username")
     password = jbody.get("password")
-    # need to utilzie the username for creating the profile
 
     if not username or not password:
         return make_response(401, {"status": 'auth_failed'})
@@ -19,7 +18,7 @@ def handler(event, context):
 
     preSignedUrl = utils.gen_s3_url("profiles/{}.ovpn".format(username))
 
-    if not instance_status or instance_status == "shutting-down" or instance_status == "terminated": 
+    if not instance_status: 
         userdata = utils.generate_ec2_userdata(username) 
         utils.run_instance(userdata)
         return make_response(202, {"status": "created", "preSignedUrl": preSignedUrl})

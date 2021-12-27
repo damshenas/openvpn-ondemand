@@ -123,7 +123,7 @@ class CdkStack(Stack):
 
         security_group.add_ingress_rule(
             _ec2.Peer.any_ipv4(),
-            _ec2.Port.udp(1194),
+            _ec2.Port.tcp(1897), #make sure to change it if you changed the default port #TBU
         )
 
         openvpn_builder_lambda.add_environment('security_group_id', security_group.security_group_id)
