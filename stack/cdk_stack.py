@@ -52,58 +52,6 @@ class CdkStack(Stack):
             allowed_origins=["*"] # add API gateway web resource URL
         )
 
-        ### IAM policies
-        ovod_lambda_policy = _iam.PolicyStatement(
-            effect=_iam.Effect.ALLOW, 
-            resources=['*'], #TBU not secure
-            actions=[
-                "ec2:RunInstances", 
-                "ec2:TerminateInstances", 
-                "ec2:StartInstances",
-                "ec2:StopInstances",
-                "ec2:CreateTags", 
-                "ec2:DescribeInstances",
-                "ec2:DescribeInstanceStatus",
-                "ec2:DescribeAddresses", 
-                "ec2:AssociateAddress",
-                "ec2:DisassociateAddress",
-                "ec2:DescribeRegions",
-                "ec2:DescribeAvailabilityZones",
-                "iam:PassRole",
-                "s3:ListBucket"
-            ])
-
-        ovod_ec2_policy_scripts = _iam.PolicyStatement(
-            effect=_iam.Effect.ALLOW, 
-            resources=[
-                "{}/scripts/*".format(artifacts_bucket.bucket_arn)
-            ],
-            actions=[
-                "s3:GetObject",
-            ])
-
-        ovod_ec2_policy_profiles = _iam.PolicyStatement(
-            effect=_iam.Effect.ALLOW, 
-            resources=[
-                "{}/profiles/*".format(artifacts_bucket.bucket_arn)
-            ],
-            actions=[
-                "s3:PutObject",
-                "s3:DeleteObject",
-            ])
-
-        ### IAM roles instance profile
-        ovod_ec2_instance_role = _iam.Role(self, "ovod_ec2_instance_role",
-            role_name="ovod_ec2_instance_role",
-            assumed_by=_iam.ServicePrincipal("ec2.amazonaws.com"))
-
-        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_scripts)
-        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_profiles)
-
-        ovod_ec2_instance_profile = _iam.CfnInstanceProfile(self, "ovod_ec2_instance_profile",
-            roles=[ovod_ec2_instance_role.role_name],
-        )
-
         ### api gateway core
         # We do not need to set CORS for APIGW as in proxy mode Lambda has to return the relevant headers
         api_gateway = _apigw.RestApi(self, 'ovod_APIGW', 
@@ -114,12 +62,13 @@ class CdkStack(Stack):
         openvpn_builder_lambda = _lambda.Function(self, "ovod_builder",
             function_name="ovod_builder",
             runtime=_lambda.Runtime.PYTHON_3_7,
+            timeout=Duration.seconds(10),
             environment={
                 "region": self.region,
+                "debug_mode": 'false',
                 "artifacts_bucket": artifacts_bucket.bucket_name,
                 "ssm_domain_name": ssm_domain_name.parameter_name,
                 "ssm_ddns_update_key": ssm_ddns_update_url.parameter_name,
-                "ovod_ec2_instance_role": ovod_ec2_instance_profile.attr_arn,
             },
             handler="main.handler",
             code=_lambda.Code.from_asset("./src"))
@@ -128,13 +77,25 @@ class CdkStack(Stack):
         artifacts_bucket.grant_read(openvpn_builder_lambda, objects_key_pattern="profiles/*")
         ssm_domain_name.grant_read(openvpn_builder_lambda)
         ssm_ddns_update_url.grant_read(openvpn_builder_lambda)
-        openvpn_builder_lambda.add_to_role_policy(ovod_lambda_policy)
 
         openvpn_builder_lambda_integration = _apigw.LambdaIntegration(
             openvpn_builder_lambda,
             proxy=True)
 
         api_gateway.root.add_method('POST', openvpn_builder_lambda_integration)
+
+        ### create dynamo table
+        dynamodb_table = _dydb.Table(
+            self, "openvpn_table",
+            partition_key=_dydb.Attribute(
+                name="username",
+                type=_dydb.AttributeType.STRING
+            ),
+            billing_mode=_dydb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY # NOT recommended for production 
+        )
+        openvpn_builder_lambda.add_environment('dynamodb_table_name', dynamodb_table.table_name)
+        dynamodb_table.grant_read_write_data(openvpn_builder_lambda)
 
         ### VPC
         ovod_vpc = _ec2.Vpc(self, 'ovod_vpc',
@@ -167,15 +128,81 @@ class CdkStack(Stack):
 
         openvpn_builder_lambda.add_environment('security_group_id', security_group.security_group_id)
 
-        ### create dynamo table
-        dynamodb_table = _dydb.Table(
-            self, "openvpn_table",
-            partition_key=_dydb.Attribute(
-                name="username",
-                type=_dydb.AttributeType.STRING
-            ),
-            billing_mode=_dydb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.DESTROY # NOT recommended for production 
+        ### IAM policies
+        ovod_lambda_policy = _iam.PolicyStatement(
+            effect=_iam.Effect.ALLOW, 
+            resources=['*'], #TBU not secure
+            actions=[
+                "ec2:RunInstances", 
+                "ec2:TerminateInstances", 
+                "ec2:StartInstances",
+                "ec2:StopInstances",
+                "ec2:CreateTags", 
+                "ec2:DescribeInstances",
+                "ec2:DescribeInstanceStatus",
+                "ec2:DescribeAddresses", 
+                "ec2:AssociateAddress",
+                "ec2:DisassociateAddress",
+                "ec2:DescribeRegions",
+                "ec2:DescribeAvailabilityZones",
+                "iam:PassRole",
+                "s3:ListBucket",
+                "ssm:SendCommand"
+            ])
+
+        ovod_ec2_policy_scripts = _iam.PolicyStatement(
+            effect=_iam.Effect.ALLOW, 
+            resources=[
+                "{}/scripts/*".format(artifacts_bucket.bucket_arn)
+            ],
+            actions=[
+                "s3:GetObject",
+            ])
+
+        ovod_ec2_policy_profiles = _iam.PolicyStatement(
+            effect=_iam.Effect.ALLOW, 
+            resources=[
+                "{}/profiles/*".format(artifacts_bucket.bucket_arn)
+            ],
+            actions=[
+                "s3:PutObject",
+                "s3:DeleteObject",
+            ])
+
+        ovod_ec2_policy_configs = _iam.PolicyStatement(
+            effect=_iam.Effect.ALLOW, 
+            resources=[
+                "{}/openvpn/*".format(artifacts_bucket.bucket_arn)
+            ],
+            actions=[
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:PutObject"
+            ])
+
+        ovod_ec2_policy_generic = _iam.PolicyStatement(
+            effect=_iam.Effect.ALLOW, 
+            resources=[artifacts_bucket.bucket_arn],
+            actions=[
+                "s3:ListBucket"
+            ])
+
+        ### IAM roles instance profile 
+        ovod_ec2_instance_role = _iam.Role(self, "ovod_ec2_instance_role",
+            role_name="ovod_ec2_instance_role",
+            managed_policies=[
+                _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")
+            ],
+            assumed_by=_iam.ServicePrincipal("ec2.amazonaws.com"))
+
+        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_scripts)
+        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_profiles)
+        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_configs)
+        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_generic)
+
+        ovod_ec2_instance_profile = _iam.CfnInstanceProfile(self, "ovod_ec2_instance_profile",
+            roles=[ovod_ec2_instance_role.role_name],
         )
-        openvpn_builder_lambda.add_environment('dynamodb_table_name', dynamodb_table.table_name)
-        dynamodb_table.grant_read_write_data(openvpn_builder_lambda)
+
+        openvpn_builder_lambda.add_to_role_policy(ovod_lambda_policy)
+        openvpn_builder_lambda.add_environment('ovod_ec2_instance_role', ovod_ec2_instance_profile.attr_arn)

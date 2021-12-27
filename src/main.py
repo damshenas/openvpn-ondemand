@@ -8,26 +8,26 @@ def handler(event, context):
     # need to utilzie the username for creating the profile
 
     if not username or not password:
-        return make_response(401, {"ready": False})
+        return make_response(401, {"status": 'auth_failed'})
 
     authenticated = utils.is_login_valid(username, password)
     if not authenticated: 
-        return make_response(401, {"ready": False})
+        return make_response(401, {"status": 'auth_failed'})
 
     utils.update_last_login(username)
-    instance_exists = utils.check_if_instance_exists("*OpenVPN*")
+    instance_status, instance_id = utils.check_if_instance_exists("*OpenVPN*")
 
-    preSignedUrl = utils.gen_s3_url("profiles/user1.ovpn")
+    preSignedUrl = utils.gen_s3_url("profiles/{}.ovpn".format(username))
 
-    if (instance_exists == "running"): 
-        return make_response(200, {"ready": True, "preSignedUrl": preSignedUrl})
-    elif (instance_exists == "pending"): 
-        return make_response(201, {"ready": False, "preSignedUrl": preSignedUrl})
+    if not instance_status or instance_status == "shutting-down" or instance_status == "terminated": 
+        userdata = utils.generate_ec2_userdata(username) 
+        utils.run_instance(userdata)
+        return make_response(202, {"status": "created", "preSignedUrl": preSignedUrl})
+    elif instance_status == "running": 
+        utils.add_profile(username, instance_id)
+        return make_response(200, {"status": "running", "preSignedUrl": preSignedUrl})
 
-    userdata = utils.generate_ec2_userdata() 
-    utils.run_instance(userdata)
-
-    return make_response(202, {"ready": False, "preSignedUrl": preSignedUrl})
+    return make_response(201, {"status": instance_status, "preSignedUrl": preSignedUrl})
 
 def make_response(status, response):
     return {
