@@ -153,7 +153,7 @@ class CdkStack(Stack):
         ovod_ec2_policy_scripts = _iam.PolicyStatement(
             effect=_iam.Effect.ALLOW, 
             resources=[
-                "{}/scripts/*".format(artifacts_bucket.bucket_arn)
+                "{}/*".format(artifacts_bucket.bucket_arn)
             ],
             actions=[
                 "s3:GetObject",
@@ -167,17 +167,6 @@ class CdkStack(Stack):
             actions=[
                 "s3:PutObject",
                 "s3:DeleteObject",
-            ])
-
-        ovod_ec2_policy_configs = _iam.PolicyStatement(
-            effect=_iam.Effect.ALLOW, 
-            resources=[
-                "{}/openvpn/*".format(artifacts_bucket.bucket_arn)
-            ],
-            actions=[
-                "s3:PutObject",
-                "s3:GetObject",
-                "s3:PutObject"
             ])
 
         ovod_ec2_policy_generic = _iam.PolicyStatement(
@@ -197,7 +186,6 @@ class CdkStack(Stack):
 
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_scripts)
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_profiles)
-        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_configs)
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_generic)
 
         ovod_ec2_instance_profile = _iam.CfnInstanceProfile(self, "ovod_ec2_instance_profile",
