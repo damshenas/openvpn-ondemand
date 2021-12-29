@@ -13,7 +13,8 @@ dimage=damshenas/openvpn:arm64
 profile_script=/tmp/profile.sh
 
 mkdir -p $confdir
-aws s3 sync s3://ARTIFACTS_S3_BUCKET/openvpn $confdir
+aws s3 cp s3://ARTIFACTS_S3_BUCKET/openvpn.tar.gz ./
+tar -xvzf openvpn.tar.gz -C $confdir
 
 # preparing the keys and running the openvpn server
 docker pull $dimage
