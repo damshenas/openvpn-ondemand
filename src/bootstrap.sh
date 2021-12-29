@@ -8,9 +8,9 @@ service docker start
 confdir=/tmp/openvpn
 hostport=1897
 hostprotocol=tcp
-domain="DOMAIN_NAME" #TBU
 dimage=damshenas/openvpn:arm64
 profile_script=/tmp/profile.sh
+domain=none.example.com #Just place holder as we will not use a domain 
 
 mkdir -p $confdir
 aws s3 cp s3://ARTIFACTS_S3_BUCKET/openvpn.tar.gz ./
@@ -28,6 +28,11 @@ if [ ! -f "$confdir/pki/ca.crt" ]; then
   echo "Cert not found. Generating certificates."
   docker run -v $confdir:/etc/openvpn --rm -i -e "EASYRSA_BATCH=1" -e "EASYRSA_REQ_CN=My CN" $dimage ovpn_initpki nopass
 fi
+
+server_ip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+
+sed -i "s/$domain/$server_ip/g" $confdir/ovpn_env.sh
+grep -rl "$domain" $confdir/pki | xargs sed -i "s/$domain/$server_ip/g"
 
 # replacing the default port before running openvpn
 sed -i "s|1194|$hostport|" $confdir/openvpn.conf
@@ -47,7 +52,6 @@ while true
 do
   # no_connections=$(ss -tun src :$hostport | grep ESTAB | wc -l)
   # no_connections=$(conntrack -L --proto udp --dport $hostport --status ASSURED)
-  # cat /proc/net/nf_conntrack | grep 1897 | grep ESTABLISHED | wc -l
   # no_connections=$(cat /proc/net/nf_conntrack | grep ASSURED | grep $hostport | wc -l)
   filtertype="ESTABLISHED"
   if [ "$hostprotocol" = "udp" ]; then filtertype="ASSURED"; fi
