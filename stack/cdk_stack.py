@@ -5,9 +5,10 @@ from aws_cdk import (
     aws_iam as _iam,
     aws_ssm as _ssm,
     aws_ec2 as _ec2,
+    aws_logs as _logs,
     aws_lambda as _lambda,
     aws_dynamodb as _dydb,
-    aws_apigateway as _apigw
+    aws_apigateway as _apigw,
 )
 
 class CdkStack(Stack):
@@ -62,6 +63,8 @@ class CdkStack(Stack):
         openvpn_builder_lambda = _lambda.Function(self, "ovod_builder",
             function_name="ovod_builder",
             runtime=_lambda.Runtime.PYTHON_3_7,
+            architecture=_lambda.Architecture.ARM_64,
+            log_retention=_logs.RetentionDays.THREE_MONTHS,
             timeout=Duration.seconds(10),
             environment={
                 "region": self.region,
