@@ -5,28 +5,16 @@ from aws_cdk import (
     aws_iam as _iam,
     aws_ssm as _ssm,
     aws_ec2 as _ec2,
+    aws_logs as _logs,
     aws_lambda as _lambda,
     aws_dynamodb as _dydb,
-    aws_apigateway as _apigw
+    aws_apigateway as _apigw,
 )
 
 class CdkStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-
-        ## SSM Param Store
-        ssm_domain_name = _ssm.StringParameter(self, "OVOD_DOMAIN_NAME",
-            string_value="something.something.com", 
-            description="Domain Name for the OpenVPN. Need manual override. Default is None."
-        )
-        ssm_domain_name.apply_removal_policy(RemovalPolicy.DESTROY) # NOT recommended for production 
-
-        ssm_ddns_update_url = _ssm.StringParameter(self, "OVOD_DDNS_UPDATE_URL",
-            string_value="https://freedns.afraid.org/dynamic/update.php?something", 
-            description="Update URL for the DDNS (more info on freedns.afraid.org). Need manual override. Default is None."
-        )
-        ssm_ddns_update_url.apply_removal_policy(RemovalPolicy.DESTROY) # NOT recommended for production 
 
         ### S3 core
         lifecycle_rule = _s3.LifecycleRule(
@@ -61,22 +49,20 @@ class CdkStack(Stack):
         ### lambda function
         openvpn_builder_lambda = _lambda.Function(self, "ovod_builder",
             function_name="ovod_builder",
-            runtime=_lambda.Runtime.PYTHON_3_7,
+            runtime=_lambda.Runtime.PYTHON_3_9,
+            architecture=_lambda.Architecture.ARM_64,
+            log_retention=_logs.RetentionDays.THREE_MONTHS,
             timeout=Duration.seconds(10),
             environment={
                 "region": self.region,
                 "debug_mode": 'false',
-                "artifacts_bucket": artifacts_bucket.bucket_name,
-                "ssm_domain_name": ssm_domain_name.parameter_name,
-                "ssm_ddns_update_key": ssm_ddns_update_url.parameter_name,
+                "artifacts_bucket": artifacts_bucket.bucket_name
             },
             handler="main.handler",
             code=_lambda.Code.from_asset("./src"))
 
         artifacts_bucket.grant_put(openvpn_builder_lambda, objects_key_pattern="scripts/*")
         artifacts_bucket.grant_read(openvpn_builder_lambda, objects_key_pattern="profiles/*")
-        ssm_domain_name.grant_read(openvpn_builder_lambda)
-        ssm_ddns_update_url.grant_read(openvpn_builder_lambda)
 
         openvpn_builder_lambda_integration = _apigw.LambdaIntegration(
             openvpn_builder_lambda,

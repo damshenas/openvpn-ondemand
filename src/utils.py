@@ -6,20 +6,17 @@ ssm_client = boto3.client('ssm', region)
 ec2_client = boto3.client('ec2',region)
 s3_client = boto3.client('s3',region)
 ddb_client = boto3.client('dynamodb',region)
-ssm_client = boto3.client('ssm',region)
 
-domain_name = ssm_client.get_parameter(Name=os.environ['ssm_domain_name'])['Parameter']['Value']
-update_url = ssm_client.get_parameter(Name=os.environ['ssm_ddns_update_key'])['Parameter']['Value']
 ec2_role = os.environ['ovod_ec2_instance_role']
 artifacts_bucket = os.environ['artifacts_bucket']
 dynamodb_table = os.environ['dynamodb_table_name']
 debug_mode = 0 if os.environ['debug_mode'] == 'true' else 1
 
 def generate_ec2_userdata(username):
-    for f in ["bootstrap.sh", "ddns.sh", "profile.sh"]: 
+    for f in ["bootstrap.sh", "profile.sh"]: 
         uplaod_to_s3(f)
     return file_get_contents("userdata.sh").format(
-        debug_mode, artifacts_bucket, update_url, domain_name, username 
+        debug_mode, artifacts_bucket, username 
     )
 
 def file_get_contents(filename):
