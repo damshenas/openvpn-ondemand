@@ -3,6 +3,7 @@ import boto3, os, time
 class main:
     def __init__(self, username, ec2_region, region='us-east-1'):
         self.region = 'us-east-1'
+        self.sshkeyname = 'default.key'
         self.ec2_region = region
         self.username = username
         self.ec2_client = boto3.client('ec2',ec2_region)
@@ -42,10 +43,9 @@ class main:
         response = self.ddb_client.get_item(
             TableName=self.dynamodb_table,
             Key={'username': {'S': self.username}}
-
-            # fix this / not using password
         )
-        return 'Item' in response
+
+        return True if 'Item' in response and response['Item']['password']['S'] == password else False
 
     def update_last_login(self):
         return self.ddb_client.update_item(
@@ -99,7 +99,7 @@ class main:
 
             SubnetId=os.environ['vpc_subnet_id'],
             UserData=userdata,
-            KeyName='n.virginia.def.key',
+            KeyName=self.sshkeyname,
 
             DisableApiTermination=False,
 
