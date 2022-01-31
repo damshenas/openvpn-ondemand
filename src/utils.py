@@ -2,8 +2,10 @@ import boto3, os, time
 
 class main:
     def __init__(self, username, ec2_region, region='us-east-1'):
+        self.region_data = self.region_specefics()[ec2_region]
+        self.ssh_key_name =  self.region_data['ssh_key_name']
+        self.image_id =  self.region_data['image_id']
         self.region = 'us-east-1'
-        self.sshkeyname = 'default.key'
         self.ec2_region = region
         self.username = username
         self.ec2_client = boto3.client('ec2',ec2_region)
@@ -91,7 +93,7 @@ class main:
                     },
                 },
             ],
-            ImageId="ami-0a1eddae0b7f0a79f",
+            ImageId=self.image_id,
             InstanceType="t4g.nano",
             MaxCount=1,
             MinCount=1,
@@ -99,7 +101,7 @@ class main:
 
             SubnetId=os.environ['vpc_subnet_id'],
             UserData=userdata,
-            KeyName=self.sshkeyname,
+            KeyName=self.ssh_key_name,
 
             DisableApiTermination=False,
 
@@ -133,3 +135,19 @@ class main:
 
 
         return instance['Instances'][0]['InstanceId']
+
+    def region_specefics(self):
+        return {
+            "us-east-1": {
+                "image_id": "ami-0b6705f88b1f688c1",
+                "ssh_key_name": "n.virginia.def.key"
+            },
+            "ap-south-1": {
+                "image_id": "ami-0a227da0cb07f6dfd",
+                "ssh_key_name": "mumbai.def.key"
+            },
+            "eu-central-1": {
+                "image_id": "ami-0979d16bc6b1b6d87",
+                "ssh_key_name": "frankfurt.def.key"
+            }
+        }
