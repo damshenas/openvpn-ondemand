@@ -66,7 +66,7 @@ do
 
   if [ $minutes_without_connection -ge $max_minutes_without_connection ]; then
     echo "shutting down. $minutes_without_connection minutes without connection"
-    aws s3 rm --recursive s3://ARTIFACTS_S3_BUCKET/profiles/
+    aws s3 rm --recursive s3://ARTIFACTS_S3_BUCKET/profiles/REGION
     poweroff
   else
     sleep 60

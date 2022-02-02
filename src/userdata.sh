@@ -2,6 +2,7 @@
 
 export debug_mode={}
 artifact_bucket={}
+region={}
 bootstrap_file=/tmp/bootstrap.sh
 profile_file=/tmp/profile.sh
 
@@ -14,5 +15,7 @@ vi $profile_file -c "set ff=unix" -c ":wq"
 sed -i "s|FIRST_USER_NAME|{}|" $bootstrap_file
 sed -i "s|ARTIFACTS_S3_BUCKET|$artifact_bucket|" $bootstrap_file
 sed -i "s|ARTIFACTS_S3_BUCKET|$artifact_bucket|" $profile_file
+sed -i "s|REGION|$region|" $bootstrap_file
+sed -i "s|REGION|$region|" $profile_file
 
 source $bootstrap_file

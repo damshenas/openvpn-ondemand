@@ -10,6 +10,7 @@ test*
 # CDK asset staging directory
 .cdk.staging
 cdk.out
+cdk.context.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

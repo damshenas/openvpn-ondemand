@@ -5,25 +5,38 @@ def handler(event, context):
     jbody = json.loads(sbody)
     username = jbody.get("username")
     password = jbody.get("password")
+    ec2_region = jbody.get("region")
+
+    print ("New request by {} for {}".format(username, ec2_region))
 
     if not username or not password:
         return make_response(401, {"status": 'auth_failed'})
 
-    authenticated = utils.is_login_valid(username, password)
+    with open("configs.json", 'r') as f:
+        configs = json.load(f)
+        region_specefics = configs['region_data']
+        name = configs['app_name']
+
+    if ec2_region not in region_specefics.keys():
+        return make_response(402, {"status": 'region_not_supported'})
+
+    utls = utils.main(username, name, ec2_region, region_specefics[ec2_region])
+
+    authenticated = utls.is_login_valid(password)
     if not authenticated: 
         return make_response(401, {"status": 'auth_failed'})
 
-    utils.update_last_login(username)
-    instance_status, instance_id = utils.check_if_instance_exists("*OpenVPN*")
+    utls.update_last_login()
+    instance_status, instance_id = utls.check_if_instance_exists("*OpenVPN*")
 
-    preSignedUrl = utils.gen_s3_url("profiles/{}.ovpn".format(username))
+    preSignedUrl = utls.gen_s3_url("profiles/{}/{}.ovpn".format(ec2_region, username))
 
     if not instance_status: 
-        userdata = utils.generate_ec2_userdata(username) 
-        utils.run_instance(userdata)
+        userdata = utls.generate_ec2_userdata() 
+        utls.run_instance(userdata)
         return make_response(202, {"status": "created", "preSignedUrl": preSignedUrl})
     elif instance_status == "running": 
-        utils.add_profile(username, instance_id)
+        utls.add_profile(instance_id)
         return make_response(200, {"status": "running", "preSignedUrl": preSignedUrl})
 
     return make_response(201, {"status": instance_status, "preSignedUrl": preSignedUrl})
