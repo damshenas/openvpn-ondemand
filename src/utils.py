@@ -10,19 +10,16 @@ class main:
         self.security_group_id, self.vpc_subnet_id = self.get_vpc_sg()
         self.ssh_key_name =  region_specefics['ssh_key_name']
         self.image_id =  region_specefics['image_id']
-        self.ec2_role = region_specefics['ec2_instance_role']
-        # self.security_group_id = region_specefics['security_group_id']
-        # self.vpc_subnet_id = region_specefics['vpc_subnet_id']
 
         self.ssm_client = boto3.client('ssm', region)
         self.s3_client = boto3.client('s3',region)
         self.ddb_client = boto3.client('dynamodb',region)
 
         self.artifacts_bucket = os.environ['artifacts_bucket']
+        self.ec2_role = os.environ['ec2_instance_role']
         self.dynamodb_table = os.environ['dynamodb_table_name']
         self.debug_mode = 0 if os.environ['debug_mode'] == 'true' else 1
 
-        
     def generate_ec2_userdata(self):
         for f in ["bootstrap.sh", "profile.sh"]: 
             self.uplaod_to_s3(f)
@@ -93,8 +90,8 @@ class main:
         response =  cf_client.describe_stacks(StackName=stack_id)
         outputs = response["Stacks"][0]["Outputs"]
         for output in outputs:
-            if output["OutputKey"] == "security_group_id": sg_id = output['OutputValue']
-            if output["OutputKey"] == "vpc_subnet_id": vpc_id = output['OutputValue']
+            if output["OutputKey"] == "securitygroupid": sg_id = output['OutputValue']
+            if output["OutputKey"] == "vpcsubnetid": vpc_id = output['OutputValue']
 
         return sg_id, vpc_id
 

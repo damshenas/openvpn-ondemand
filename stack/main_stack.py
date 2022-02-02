@@ -101,7 +101,8 @@ class CdkMainStack(Stack):
                 "ec2:DescribeAvailabilityZones",
                 "iam:PassRole",
                 "s3:ListBucket",
-                "ssm:SendCommand"
+                "ssm:SendCommand",
+                "cloudformation:DescribeStacks"
             ])
 
         self.openvpn_builder_lambda.add_to_role_policy(ovod_lambda_policy)
