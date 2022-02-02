@@ -24,7 +24,7 @@ class main:
         for f in ["bootstrap.sh", "profile.sh"]: 
             self.uplaod_to_s3(f)
         return self.file_get_contents("userdata.sh").format(
-            self.debug_mode, self.artifacts_bucket, self.username 
+            self.debug_mode, self.artifacts_bucket, self.ec2_region, self.username
         )
 
     def file_get_contents(self, filename):

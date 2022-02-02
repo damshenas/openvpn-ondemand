@@ -29,7 +29,7 @@ def handler(event, context):
     utls.update_last_login()
     instance_status, instance_id = utls.check_if_instance_exists("*OpenVPN*")
 
-    preSignedUrl = utls.gen_s3_url("profiles/{}.ovpn".format(username))
+    preSignedUrl = utls.gen_s3_url("profiles/{}/{}.ovpn".format(ec2_region, username))
 
     if not instance_status: 
         userdata = utls.generate_ec2_userdata() 
