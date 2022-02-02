@@ -12,10 +12,15 @@ def handler(event, context):
     if not username or not password:
         return make_response(401, {"status": 'auth_failed'})
 
-    utls = utils.main(username, ec2_region)
+    with open("configs.json", 'r') as f:
+        configs = json.load(f)
+        region_specefics = configs['region_data']
+        name = configs['name']
 
-    if ec2_region not in utls.region_specefics().keys():
+    if ec2_region not in region_specefics.keys():
         return make_response(402, {"status": 'region_not_supported'})
+
+    utls = utils.main(username, name, ec2_region, region_specefics[ec2_region])
 
     authenticated = utls.is_login_valid(password)
     if not authenticated: 

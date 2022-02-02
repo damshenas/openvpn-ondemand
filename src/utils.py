@@ -1,22 +1,28 @@
-import boto3, os, time
+import boto3, os, time, json
 
 class main:
-    def __init__(self, username, ec2_region, region='us-east-1'):
-        self.region_data = self.region_specefics()[ec2_region]
-        self.ssh_key_name =  self.region_data['ssh_key_name']
-        self.image_id =  self.region_data['image_id']
-        self.region = 'us-east-1'
-        self.ec2_region = region
+    def __init__(self, username, name, ec2_region, region_specefics, region='us-east-1'):
         self.username = username
+        self.ec2_region = ec2_region
+        self.name = name
+
         self.ec2_client = boto3.client('ec2',ec2_region)
+        self.security_group_id, self.vpc_subnet_id = self.get_vpc_sg()
+        self.ssh_key_name =  region_specefics['ssh_key_name']
+        self.image_id =  region_specefics['image_id']
+        self.ec2_role = region_specefics['ec2_instance_role']
+        # self.security_group_id = region_specefics['security_group_id']
+        # self.vpc_subnet_id = region_specefics['vpc_subnet_id']
+
         self.ssm_client = boto3.client('ssm', region)
         self.s3_client = boto3.client('s3',region)
         self.ddb_client = boto3.client('dynamodb',region)
-        self.ec2_role = os.environ['ovod_ec2_instance_role']
+
         self.artifacts_bucket = os.environ['artifacts_bucket']
         self.dynamodb_table = os.environ['dynamodb_table_name']
         self.debug_mode = 0 if os.environ['debug_mode'] == 'true' else 1
 
+        
     def generate_ec2_userdata(self):
         for f in ["bootstrap.sh", "profile.sh"]: 
             self.uplaod_to_s3(f)
@@ -81,6 +87,17 @@ class main:
             Comment='Creating profile for user {} in instance {}'.format(self.username, instance_id),
             Parameters={'commands': ['source /tmp/profile.sh {}'.format(self.username)]})
 
+    def get_vpc_sg(self):
+        stack_id = "{}{}SpeceficStack".format(self.name,self.ec2_region.replace('-',''))
+        cf_client = boto3.client('cloudformation', self.ec2_region)
+        response =  cf_client.describe_stacks(StackName=stack_id)
+        outputs = response["Stacks"][0]["Outputs"]
+        for output in outputs:
+            if output["OutputKey"] == "security_group_id": sg_id = output['OutputValue']
+            if output["OutputKey"] == "vpc_subnet_id": vpc_id = output['OutputValue']
+
+        return sg_id, vpc_id
+
     def run_instance(self, userdata):
         instance = self.ec2_client.run_instances(
             BlockDeviceMappings=[
@@ -97,9 +114,9 @@ class main:
             InstanceType="t4g.nano",
             MaxCount=1,
             MinCount=1,
-            SecurityGroupIds=[os.environ['security_group_id']],
+            SecurityGroupIds=[self.security_group_id],
 
-            SubnetId=os.environ['vpc_subnet_id'],
+            SubnetId=self.vpc_subnet_id,
             UserData=userdata,
             KeyName=self.ssh_key_name,
 
@@ -135,19 +152,3 @@ class main:
 
 
         return instance['Instances'][0]['InstanceId']
-
-    def region_specefics(self):
-        return {
-            "us-east-1": {
-                "image_id": "ami-0b6705f88b1f688c1",
-                "ssh_key_name": "n.virginia.def.key"
-            },
-            "ap-south-1": {
-                "image_id": "ami-0a227da0cb07f6dfd",
-                "ssh_key_name": "mumbai.def.key"
-            },
-            "eu-central-1": {
-                "image_id": "ami-0979d16bc6b1b6d87",
-                "ssh_key_name": "frankfurt.def.key"
-            }
-        }

@@ -1,17 +1,15 @@
 from constructs import Construct
 from aws_cdk import (
-    Duration, Stack, RemovalPolicy,
+    Duration, Stack, RemovalPolicy, PhysicalName,
     aws_s3 as _s3,
     aws_iam as _iam,
-    aws_ssm as _ssm,
-    aws_ec2 as _ec2,
     aws_logs as _logs,
     aws_lambda as _lambda,
     aws_dynamodb as _dydb,
     aws_apigateway as _apigw,
 )
 
-class CdkStack(Stack):
+class CdkMainStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -24,7 +22,8 @@ class CdkStack(Stack):
                 prefix="profiles"
             )
 
-        artifacts_bucket = _s3.Bucket(self, "ovod-artifacts",
+        self.artifacts_bucket = _s3.Bucket(self, "ovod-artifacts",
+            bucket_name = PhysicalName.GENERATE_IF_NEEDED,
             lifecycle_rules = [lifecycle_rule],
             removal_policy=RemovalPolicy.DESTROY, # NOT recommended for production 
             auto_delete_objects=True,
@@ -35,7 +34,7 @@ class CdkStack(Stack):
             )]
         )
 
-        artifacts_bucket.add_cors_rule(
+        self.artifacts_bucket.add_cors_rule(
             allowed_methods=[_s3.HttpMethods.POST],
             allowed_origins=["*"] # add API gateway web resource URL
         )
@@ -47,7 +46,7 @@ class CdkStack(Stack):
         )
 
         ### lambda function
-        openvpn_builder_lambda = _lambda.Function(self, "ovod_builder",
+        self.openvpn_builder_lambda = _lambda.Function(self, "ovod_builder",
             function_name="ovod_builder",
             runtime=_lambda.Runtime.PYTHON_3_9,
             architecture=_lambda.Architecture.ARM_64,
@@ -56,16 +55,16 @@ class CdkStack(Stack):
             environment={
                 "region": self.region,
                 "debug_mode": 'false',
-                "artifacts_bucket": artifacts_bucket.bucket_name
+                "artifacts_bucket": self.artifacts_bucket.bucket_name
             },
             handler="main.handler",
             code=_lambda.Code.from_asset("./src"))
 
-        artifacts_bucket.grant_put(openvpn_builder_lambda, objects_key_pattern="scripts/*")
-        artifacts_bucket.grant_read(openvpn_builder_lambda, objects_key_pattern="profiles/*")
+        self.artifacts_bucket.grant_put(self.openvpn_builder_lambda, objects_key_pattern="scripts/*")
+        self.artifacts_bucket.grant_read(self.openvpn_builder_lambda, objects_key_pattern="profiles/*")
 
         openvpn_builder_lambda_integration = _apigw.LambdaIntegration(
-            openvpn_builder_lambda,
+            self.openvpn_builder_lambda,
             proxy=True)
 
         api_gateway.root.add_method('POST', openvpn_builder_lambda_integration)
@@ -80,39 +79,8 @@ class CdkStack(Stack):
             billing_mode=_dydb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY # NOT recommended for production 
         )
-        openvpn_builder_lambda.add_environment('dynamodb_table_name', dynamodb_table.table_name)
-        dynamodb_table.grant_read_write_data(openvpn_builder_lambda)
-
-        ### VPC
-        ovod_vpc = _ec2.Vpc(self, 'ovod_vpc',
-            cidr = '10.10.0.0/24',
-            max_azs = 2,
-            enable_dns_hostnames = True,
-            enable_dns_support = True, 
-            subnet_configuration=[
-                _ec2.SubnetConfiguration(
-                    name = 'Public-Subent',
-                    subnet_type = _ec2.SubnetType.PUBLIC,
-                    cidr_mask = 26
-                )
-            ],
-            nat_gateways = 0,
-        )
-
-        openvpn_builder_lambda.add_environment('vpc_subnet_id', ovod_vpc.public_subnets[0].subnet_id)
-
-        ### security group
-        security_group = _ec2.SecurityGroup(self, "ovod_ec2_security_group",
-            vpc = ovod_vpc,
-            allow_all_outbound = True
-        )
-
-        security_group.add_ingress_rule(
-            _ec2.Peer.any_ipv4(),
-            _ec2.Port.tcp(1897), #make sure to change it if you changed the default port #TBU
-        )
-
-        openvpn_builder_lambda.add_environment('security_group_id', security_group.security_group_id)
+        self.openvpn_builder_lambda.add_environment('dynamodb_table_name', dynamodb_table.table_name)
+        dynamodb_table.grant_read_write_data(self.openvpn_builder_lambda)
 
         ### IAM policies
         ovod_lambda_policy = _iam.PolicyStatement(
@@ -136,10 +104,14 @@ class CdkStack(Stack):
                 "ssm:SendCommand"
             ])
 
+        self.openvpn_builder_lambda.add_to_role_policy(ovod_lambda_policy)
+
+
+        ### IAM policies
         ovod_ec2_policy_scripts = _iam.PolicyStatement(
             effect=_iam.Effect.ALLOW, 
             resources=[
-                "{}/*".format(artifacts_bucket.bucket_arn)
+                "{}/*".format(self.artifacts_bucket.bucket_arn)
             ],
             actions=[
                 "s3:GetObject",
@@ -148,7 +120,7 @@ class CdkStack(Stack):
         ovod_ec2_policy_profiles = _iam.PolicyStatement(
             effect=_iam.Effect.ALLOW, 
             resources=[
-                "{}/profiles/*".format(artifacts_bucket.bucket_arn)
+                "{}/profiles/*".format(self.artifacts_bucket.bucket_arn)
             ],
             actions=[
                 "s3:PutObject",
@@ -157,7 +129,7 @@ class CdkStack(Stack):
 
         ovod_ec2_policy_generic = _iam.PolicyStatement(
             effect=_iam.Effect.ALLOW, 
-            resources=[artifacts_bucket.bucket_arn],
+            resources=[self.artifacts_bucket.bucket_arn],
             actions=[
                 "s3:ListBucket"
             ])
@@ -178,5 +150,4 @@ class CdkStack(Stack):
             roles=[ovod_ec2_instance_role.role_name],
         )
 
-        openvpn_builder_lambda.add_to_role_policy(ovod_lambda_policy)
-        openvpn_builder_lambda.add_environment('ovod_ec2_instance_role', ovod_ec2_instance_profile.attr_arn)
+        self.openvpn_builder_lambda.add_environment('ec2_instance_role', ovod_ec2_instance_profile.attr_arn)
