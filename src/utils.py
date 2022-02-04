@@ -11,7 +11,7 @@ class main:
         self.ssh_key_name =  region_specefics['ssh_key_name']
         self.image_id =  region_specefics['image_id']
 
-        self.ssm_client = boto3.client('ssm', region)
+        self.ssm_client = boto3.client('ssm', ec2_region)
         self.s3_client = boto3.client('s3',region)
         self.ddb_client = boto3.client('dynamodb',region)
 
