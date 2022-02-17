@@ -6,12 +6,12 @@ class main:
         self.ec2_region = ec2_region
         self.name = name
 
+        self.ssm_client = boto3.client('ssm', ec2_region)
         self.ec2_client = boto3.client('ec2',ec2_region)
         self.security_group_id, self.vpc_subnet_id = self.get_vpc_sg()
         self.ssh_key_name =  region_specefics['ssh_key_name']
         self.image_id =  region_specefics['image_id']
 
-        self.ssm_client = boto3.client('ssm', region)
         self.s3_client = boto3.client('s3',region)
         self.ddb_client = boto3.client('dynamodb',region)
 
