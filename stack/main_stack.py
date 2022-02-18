@@ -26,7 +26,7 @@ class CdkMainStack(Stack):
             bucket_name = PhysicalName.GENERATE_IF_NEEDED,
             lifecycle_rules = [lifecycle_rule],
             removal_policy = RemovalPolicy.DESTROY,
-            auto_delete_objects = False if envir == 'dev' else True,
+            auto_delete_objects = True if envir == 'dev' else False,
             block_public_access = _s3.BlockPublicAccess.BLOCK_ALL,
             cors = [ _s3.CorsRule(
                 allowed_methods=[ _s3.HttpMethods.GET ],
@@ -50,7 +50,7 @@ class CdkMainStack(Stack):
         )
 
         ### lambda function
-        self.openvpn_builder_lambda = _lambda.Function(self, "{}ovod_builder".format(envir),
+        self.openvpn_builder_lambda = _lambda.Function(self, "{}_ovod_builder".format(envir),
             function_name="{}_ovod_builder".format(envir),
             runtime=_lambda.Runtime.PYTHON_3_9,
             architecture=_lambda.Architecture.ARM_64,
