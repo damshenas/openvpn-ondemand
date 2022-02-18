@@ -11,9 +11,9 @@ from aws_cdk import (
 
 class CdkMainStack(Stack):
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, envir: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-
+        
         ### S3 core
         lifecycle_rule = _s3.LifecycleRule(
                 enabled=True,
@@ -22,17 +22,21 @@ class CdkMainStack(Stack):
                 prefix="profiles"
             )
 
-        self.artifacts_bucket = _s3.Bucket(self, "ovod-artifacts",
+        self.artifacts_bucket = _s3.Bucket(self, "{}-ovod-artifacts".format(envir),
             bucket_name = PhysicalName.GENERATE_IF_NEEDED,
             lifecycle_rules = [lifecycle_rule],
-            removal_policy=RemovalPolicy.DESTROY, # NOT recommended for production 
-            auto_delete_objects=True,
+            removal_policy = RemovalPolicy.DESTROY,
+            auto_delete_objects = True if envir == 'dev' else False,
             block_public_access = _s3.BlockPublicAccess.BLOCK_ALL,
             cors = [ _s3.CorsRule(
                 allowed_methods=[ _s3.HttpMethods.GET ],
                 allowed_origins=["*"],
             )]
         )
+
+        # Cannot use 'auto_delete_objects' property on a bucket without setting removal policy to 'DESTROY'
+        # for production we want to retain the bucket
+        if envir != 'dev': self.artifacts_bucket.apply_removal_policy(RemovalPolicy.RETAIN)
 
         self.artifacts_bucket.add_cors_rule(
             allowed_methods=[_s3.HttpMethods.POST],
@@ -41,19 +45,20 @@ class CdkMainStack(Stack):
 
         ### api gateway core
         # We do not need to set CORS for APIGW as in proxy mode Lambda has to return the relevant headers
-        api_gateway = _apigw.RestApi(self, 'ovod_APIGW', 
-            rest_api_name='OpenVPNOnDemand'
+        api_gateway = _apigw.RestApi(self, '{}_ovod_APIGW'.format(envir), 
+            rest_api_name='{}OpenVPNOnDemand'.format(envir.capitalize())
         )
 
         ### lambda function
-        self.openvpn_builder_lambda = _lambda.Function(self, "ovod_builder",
-            function_name="ovod_builder",
+        self.openvpn_builder_lambda = _lambda.Function(self, "{}_ovod_builder".format(envir),
+            function_name="{}_ovod_builder".format(envir),
             runtime=_lambda.Runtime.PYTHON_3_9,
             architecture=_lambda.Architecture.ARM_64,
             log_retention=_logs.RetentionDays.THREE_MONTHS,
             timeout=Duration.seconds(10),
             environment={
                 "region": self.region,
+                "env": envir,
                 "debug_mode": 'false',
                 "artifacts_bucket": self.artifacts_bucket.bucket_name
             },
@@ -71,14 +76,15 @@ class CdkMainStack(Stack):
 
         ### create dynamo table
         dynamodb_table = _dydb.Table(
-            self, "openvpn_table",
-            partition_key=_dydb.Attribute(
-                name="username",
-                type=_dydb.AttributeType.STRING
+            self, "{}_openvpn_table".format(envir),
+            partition_key = _dydb.Attribute(
+                name = "username",
+                type = _dydb.AttributeType.STRING
             ),
-            billing_mode=_dydb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.DESTROY # NOT recommended for production 
+            billing_mode = _dydb.BillingMode.PAY_PER_REQUEST,
+            removal_policy = RemovalPolicy.DESTROY if envir == 'dev' else RemovalPolicy.RETAIN 
         )
+        
         self.openvpn_builder_lambda.add_environment('dynamodb_table_name', dynamodb_table.table_name)
         dynamodb_table.grant_read_write_data(self.openvpn_builder_lambda)
 
@@ -136,8 +142,8 @@ class CdkMainStack(Stack):
             ])
 
         ### IAM roles instance profile 
-        ovod_ec2_instance_role = _iam.Role(self, "ovod_ec2_instance_role",
-            role_name="ovod_ec2_instance_role",
+        ovod_ec2_instance_role = _iam.Role(self, "{}_ovod_ec2_instance_role".format(envir),
+            role_name="{}_ovod_ec2_instance_role".format(envir),
             managed_policies=[
                 _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")
             ],
@@ -147,7 +153,7 @@ class CdkMainStack(Stack):
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_profiles)
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_generic)
 
-        ovod_ec2_instance_profile = _iam.CfnInstanceProfile(self, "ovod_ec2_instance_profile",
+        ovod_ec2_instance_profile = _iam.CfnInstanceProfile(self, "{}_ovod_ec2_instance_profile".format(envir),
             roles=[ovod_ec2_instance_role.role_name],
         )
 

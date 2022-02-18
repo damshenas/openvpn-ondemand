@@ -5,6 +5,11 @@ class main:
         self.username = username
         self.ec2_region = ec2_region
         self.name = name
+        self.env = os.environ['env']
+        self.artifacts_bucket = os.environ['artifacts_bucket']
+        self.ec2_role = os.environ['ec2_instance_role']
+        self.dynamodb_table = os.environ['dynamodb_table_name']
+        self.debug_mode = 0 if os.environ['debug_mode'] == 'true' else 1
 
         self.ssm_client = boto3.client('ssm', ec2_region)
         self.ec2_client = boto3.client('ec2',ec2_region)
@@ -14,11 +19,6 @@ class main:
 
         self.s3_client = boto3.client('s3',region)
         self.ddb_client = boto3.client('dynamodb',region)
-
-        self.artifacts_bucket = os.environ['artifacts_bucket']
-        self.ec2_role = os.environ['ec2_instance_role']
-        self.dynamodb_table = os.environ['dynamodb_table_name']
-        self.debug_mode = 0 if os.environ['debug_mode'] == 'true' else 1
 
     def generate_ec2_userdata(self):
         for f in ["bootstrap.sh", "profile.sh"]: 
@@ -85,7 +85,7 @@ class main:
             Parameters={'commands': ['source /tmp/profile.sh {}'.format(self.username)]})
 
     def get_vpc_sg(self):
-        stack_id = "{}{}SpeceficStack".format(self.name,self.ec2_region.replace('-',''))
+        stack_id = "{}{}SpeceficStack{}".format(self.env.capitalize(), self.name, self.ec2_region.replace('-',''))
         cf_client = boto3.client('cloudformation', self.ec2_region)
         response =  cf_client.describe_stacks(StackName=stack_id)
         outputs = response["Stacks"][0]["Outputs"]
