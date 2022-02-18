@@ -1,4 +1,5 @@
-import utils, json
+import utils, json, os
+env = os.environ['env']
 
 def handler(event, context): 
     sbody = event.get("body")
@@ -14,8 +15,9 @@ def handler(event, context):
 
     with open("configs.json", 'r') as f:
         configs = json.load(f)
-        region_specefics = configs['region_data']
-        name = configs['app_name']
+        env_configs = configs["environments"][env]
+        region_specefics = env_configs['region_data']
+        name = env_configs['app_name']
 
     if ec2_region not in region_specefics.keys():
         return make_response(402, {"status": 'region_not_supported'})

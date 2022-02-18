@@ -1,18 +1,39 @@
 {
     "app_name": "OpenVPNOnDemand",
-    "default_region": "us-east-1",
-    "region_data": {
-        "ap-south-1": {
-            "image_id": "ami-0a227da0cb07f6dfd",
-            "ssh_key_name": "mumbai.def.key"
+    "environments": {
+        "prd": {
+            "default_region": "us-east-1",
+            "region_data": {
+                "ap-south-1": {
+                    "image_id": "ami-0a227da0cb07f6dfd",
+                    "ssh_key_name": "mumbai.def.key"
+                },
+                "eu-central-1": {
+                    "image_id": "ami-0979d16bc6b1b6d87",
+                    "ssh_key_name": "frankfurt.def.key"
+                },
+                "us-east-1": {
+                    "image_id": "ami-0b6705f88b1f688c1",
+                    "ssh_key_name": "n.virginia.def.key"
+                }
+            }
         },
-        "eu-central-1": {
-            "image_id": "ami-0979d16bc6b1b6d87",
-            "ssh_key_name": "frankfurt.def.key"
-        },
-        "us-east-1": {
-            "image_id": "ami-0b6705f88b1f688c1",
-            "ssh_key_name": "n.virginia.def.key"
+        "dev": {
+            "default_region": "us-east-1",
+            "region_data": {
+                "ap-south-1": {
+                    "image_id": "ami-0a227da0cb07f6dfd",
+                    "ssh_key_name": "mumbai.def.key"
+                },
+                "eu-central-1": {
+                    "image_id": "ami-0979d16bc6b1b6d87",
+                    "ssh_key_name": "frankfurt.def.key"
+                },
+                "us-east-1": {
+                    "image_id": "ami-0b6705f88b1f688c1",
+                    "ssh_key_name": "n.virginia.def.key"
+                }
+            }
         }
     }
 }

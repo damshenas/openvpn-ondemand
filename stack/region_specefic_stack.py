@@ -9,11 +9,11 @@ from aws_cdk import (
 
 class CdkRegionSpeceficStack(Stack):
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, envir: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         ### VPC
-        ovod_vpc = _ec2.Vpc(self, 'ovod_vpc',
+        ovod_vpc = _ec2.Vpc(self, '{}_ovod_vpc'.format(envir),
             cidr = '10.10.0.0/24',
             max_azs = 2,
             enable_dns_hostnames = True,
@@ -29,7 +29,7 @@ class CdkRegionSpeceficStack(Stack):
         )
 
         ### security group
-        security_group = _ec2.SecurityGroup(self, "ovod_ec2_security_group",
+        security_group = _ec2.SecurityGroup(self, "{}_ovod_ec2_security_group".format(envir),
             vpc = ovod_vpc,
             allow_all_outbound = True
         )
