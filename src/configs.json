@@ -1,5 +1,8 @@
 {
     "app_name": "OpenVPNOnDemand",
+    "instance_role_name": "OpenVPNOnDemand_EC2_role",
+    "fleet_role_name": "aws-ec2-spot-fleet-tagging-role",
+    "max_price": "0.004",
     "environments": {
         "prd": {
             "default_region": "us-east-1",

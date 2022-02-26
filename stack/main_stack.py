@@ -1,3 +1,4 @@
+import json
 from constructs import Construct
 from aws_cdk import (
     Duration, Stack, RemovalPolicy, PhysicalName,
@@ -14,6 +15,11 @@ class CdkMainStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, envir: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         
+        with open("src/configs.json", 'r') as f:
+            configs = json.load(f)
+            env_configs = configs["environments"][envir]
+            region_specefics = env_configs['region_data'][self.region]
+
         ### S3 core
         lifecycle_rule = _s3.LifecycleRule(
                 enabled=True,
@@ -143,7 +149,7 @@ class CdkMainStack(Stack):
 
         ### IAM roles instance profile 
         ovod_ec2_instance_role = _iam.Role(self, "{}_ovod_ec2_instance_role".format(envir),
-            role_name="{}_ovod_ec2_instance_role".format(envir),
+            role_name="{}_{}".format(envir, configs['instance_role_name']),
             managed_policies=[
                 _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")
             ],

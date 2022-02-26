@@ -1,9 +1,8 @@
+import json
+from datetime import datetime
 from constructs import Construct
 from aws_cdk import (
-    Stack, CfnOutput,
-    aws_iam as _iam,
-    aws_s3 as _s3,
-    aws_lambda as _lambda,
+    Stack, CfnOutput, Aws, CfnTag,
     aws_ec2 as _ec2
 )
 
@@ -11,6 +10,12 @@ class CdkRegionSpeceficStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, envir: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        with open("src/configs.json", 'r') as f:
+            configs = json.load(f)
+            instance_role_name = configs['instance_role_name']
+            env_configs = configs["environments"][envir]
+            region_specefics = env_configs['region_data'][self.region]
 
         ### VPC
         ovod_vpc = _ec2.Vpc(self, '{}_ovod_vpc'.format(envir),
@@ -41,3 +46,500 @@ class CdkRegionSpeceficStack(Stack):
         
         CfnOutput(self, "security_group_id", value=security_group.security_group_id)
         CfnOutput(self, "vpc_subnet_id", value=ovod_vpc.public_subnets[0].subnet_id)
+
+        ### Spot request
+        # create spot request with target 0
+        # the spot request need to use spot config with user data ... perhaps some issues here
+        # - most of the logics will be moved here as infra code
+        # upon request the target will be 0 (instead of launching instance)
+        #
+
+        # documentation CFN
+        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-spotfleet.html
+        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-launchtemplate-launchtemplatedata.html
+        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-spotfleet-spotfleetrequestconfigdata.html
+        # 
+
+        # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_ec2/CfnSpotFleet.html
+        # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_ec2/CfnSpotFleet.html#aws_cdk.aws_ec2.CfnSpotFleet.SpotFleetRequestConfigDataProperty
+
+        block_device_mapping1 = _ec2.CfnSpotFleet.BlockDeviceMappingProperty(
+            device_name="xvdb",
+            ebs=_ec2.CfnSpotFleet.EbsBlockDeviceProperty(
+                delete_on_termination=True,
+                volume_size=8,
+                volume_type="gp3"
+            )
+        )
+
+        instance_role_name = "{}_{}".format(envir, configs['instance_role_name']),
+
+        # instance_requirements = _ec2.CfnSpotFleet.InstanceRequirementsRequestProperty(
+        #     burstable_performance="required", # only t2, t3, t3a, t4g
+        #     cpu_manufacturers=["amazon-web-services"], # AWS CPUs
+        #     instance_generations=["current"],
+        #     memory_mi_b=_ec2.CfnSpotFleet.MemoryMiBRequestProperty(max=1, min=0),
+        #     v_cpu_count=_ec2.CfnSpotFleet.VCpuCountRangeRequestProperty(max=2, min=0)
+        # )
+
+        # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_ec2/CfnLaunchTemplate.html
+
+        instance_market_option = _ec2.CfnLaunchTemplate.InstanceMarketOptionsProperty(
+            market_type="spot",
+            spot_options=_ec2.CfnLaunchTemplate.SpotOptionsProperty(
+                instance_interruption_behavior="terminate",
+                max_price=configs["max_price"],
+                spot_instance_type="persistent",
+                valid_until="validUntil"
+            )
+        )
+
+        instance_requirement = _ec2.CfnLaunchTemplate.InstanceRequirementsProperty(
+            burstable_performance="required", # only t2, t3, t3a, t4g
+            cpu_manufacturers=["amazon-web-services"], # AWS CPUs
+            instance_generations=["current"],
+            memory_mib=_ec2.CfnLaunchTemplate.MemoryMiBProperty(max=1, min=0),
+            v_cpu_count=_ec2.CfnLaunchTemplate.VCpuCountProperty(max=2, min=0)
+        )
+
+        instance_tag1 = _ec2.CfnLaunchTemplate.TagSpecificationProperty( 
+                resource_type="resourceType",
+                tags=[CfnTag(
+                    key="Name",
+                    value="OpenVPN OnDemand Instance"
+                )]
+            )
+
+        launch_template_data = _ec2.CfnLaunchTemplate.LaunchTemplateDataProperty(
+            block_device_mappings=[block_device_mapping1],
+            iam_instance_profile=_ec2.CfnLaunchTemplate.IamInstanceProfileProperty(name=instance_role_name),
+            image_id=region_specefics['image_id'],
+            instance_initiated_shutdown_behavior="terminate",
+            instance_market_options=instance_market_option,
+            instance_requirements=instance_requirement,
+            key_name=region_specefics['ssh_key_name'],
+            security_group_ids=[security_group.security_group_id],
+            tag_specifications=[instance_tag1] #tag instances and volumes on launch
+        )
+
+        launch_template = _ec2.CfnLaunchTemplate(self, "LaunchTemplate", launch_template_data=launch_template_data)
+
+        # launch_specifications = _ec2.CfnSpotFleet.SpotFleetLaunchSpecificationProperty(
+        #             image_id=region_specefics['image_id'],
+        #             block_device_mappings=[block_device_mapping],
+        #             iam_instance_profile=_ec2.CfnSpotFleet.IamInstanceProfileSpecificationProperty(arn=instance_role_arn),
+        #             instance_requirements=instance_requirements,
+        #             # instance_type=["t4g.nano", "t4g.micro"], #If InstanceRequirements is specified, can’t specify InstanceTypes
+        #             key_name=region_specefics['ssh_key_name'],
+        #             security_groups=[_ec2.CfnSpotFleet.GroupIdentifierProperty(
+        #                 group_id=security_group.security_group_id
+        #             )],
+        #             spot_price=configs["max_price"],
+        #             subnet_id="{},{},{}".format(
+        #                 ovod_vpc.public_subnets[0].subnet_id,
+        #                 ovod_vpc.public_subnets[1].subnet_id,
+        #                 ovod_vpc.public_subnets[2].subnet_id
+        #             ),
+        #             tag_specifications=[_ec2.CfnSpotFleet.SpotFleetTagSpecificationProperty(
+        #                 resource_type="resourceType",
+        #                 tags=[CfnTag(
+        #                     key="Name",
+        #                     value="OpenVPN OnDemand Instance"
+        #                 )]
+        #             )],
+        #             # user_data="userData" # trying to keep the logic out of infra so we do not need to redeploy if some logic code is changed
+        #         )
+
+        launch_template_config = _ec2.CfnSpotFleet.LaunchTemplateConfigProperty(
+            launch_template_specification=_ec2.CfnSpotFleet.FleetLaunchTemplateSpecificationProperty(
+                version=launch_template.attr_latest_version_number,
+                launch_template_id=launch_template.logical_id,
+                launch_template_name=launch_template.launch_template_name
+            )
+        )
+
+        fleet_role_name = "{}_{}".format(envir, configs['fleet_role_name'])
+        generic_role_arn = "arn:aws:iam::{}:role/NAME".format(Aws.ACCOUNT_ID)
+        fleet_role_arn = generic_role_arn.replace("NAME", fleet_role_name)
+
+        # we need to add some additional logic for seamless transmission of old instance ot the new instance
+        # probably have to use the subdomain again
+        # also need to reuse the client cert (so the openvpn client retry succeed)
+        # also need to reuse the server certs (so the openvpn client retry succeed)
+        spot_maintenance_strategy = _ec2.CfnSpotFleet.SpotMaintenanceStrategiesProperty(
+            capacity_rebalance=_ec2.CfnSpotFleet.SpotCapacityRebalanceProperty(
+                replacement_strategy="launch-before-terminate",
+                termination_delay=7200
+            )
+        )
+
+        _ec2.CfnSpotFleet(self, "MyCfnSpotFleet",
+            spot_fleet_request_config_data=_ec2.CfnSpotFleet.SpotFleetRequestConfigDataProperty(
+                iam_fleet_role=fleet_role_arn,
+                target_capacity=0, # default is 0 but will be changed to 1 by lambda function
+                allocation_strategy="lowestPrice",
+                excess_capacity_termination_policy="default", # terminated instances if you decrease the target capacity
+                instance_interruption_behavior="terminate",
+                # launch_specifications=[launch_specifications], # either launch_specifications or launch_template_configs
+                launch_template_configs=[launch_template_config],
+                on_demand_allocation_strategy="lowestPrice",
+                on_demand_max_total_price=configs["max_price"],
+                on_demand_target_capacity=0,
+                replace_unhealthy_instances=True,
+                spot_maintenance_strategies=spot_maintenance_strategy,
+                spot_max_total_price=configs["max_price"],
+                spot_price=configs["max_price"],
+                target_capacity_unit_type="targetCapacityUnitType",
+                terminate_instances_with_expiration=True,
+                type="maintain"
+            )
+        )
+
+
+
+
+####################### TBD ###################### 
+
+
+
+
+
+        ## Launch Templates
+        # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_ec2/LaunchTemplateSpotOptions.html
+        launch_template_spot_options = _ec2.LaunchTemplateSpotOptions(
+            interruption_behavior=_ec2.SpotInstanceInterruption.TERMINATE,
+            max_price=0.16,
+            request_type=_ec2.SpotRequestType.PERSISTENT,
+            valid_until=Expiration.after(datetime(2029, 12, 29)) #!!!
+        )
+
+
+        ###################
+
+        
+        launch_template_spot_options = _ec2.LaunchTemplateSpotOptions(
+            block_duration=cdk.Duration.minutes(30),
+            interruption_behavior=_ec2.SpotInstanceInterruption.STOP,
+            max_price=123,
+            request_type=_ec2.SpotRequestType.ONE_TIME,
+            valid_until=expiration
+        )
+
+        ## Spot Requests
+        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-spotfleet.html
+
+        ## Lunch template
+        # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_ec2/LaunchTemplate.html
+
+        block_device = _ec2.BlockDevice(
+            device_name="xvdb",
+            volume=_ec2.BlockDeviceVolume.ebs(
+                volume_size=8, 
+                delete_on_termination=True, 
+                volume_type=_ec2.EbsDeviceVolumeType.GENERAL_PURPOSE_SSD
+            ),
+            mapping_enabled=False
+        )
+
+        launch_template = _ec2.LaunchTemplate(self, "",
+            # launch_template_name='',
+            block_devices=[block_device],
+            instance_initiated_shutdown_behavior=_ec2.InstanceInitiatedShutdownBehavior.TERMINATE,
+            instance_type=_ec2.InstanceType.of(_ec2.InstanceClass.BURSTABLE4_GRAVITON, _ec2.InstanceSize.NANO), # do we need this here?
+            machine_image=_ec2.IMachineImage....,
+            role=
+            security_group=
+            spot_options=
+            user_data=_ec2.UserData.custome("user data script content"),
+        )
+
+        launch_template.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # set vpc id, subnets id, sg group, AMI id 
+        # set in user data: region, s3 bucket, debug, username (can be something for first user and everyone else use the same ?!)
+
+
+        user_data = """MIME-Version: 1.0
+        Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+        --==MYBOUNDARY==
+        Content-Type: text/x-shellscript; charset="us-ascii"
+
+        #!/bin/bash
+        echo "Running custom user data script"
+
+        --==MYBOUNDARY==--\
+        """
+
+        lt = _ec2.CfnLaunchTemplate(self, "LaunchTemplate",
+            launch_template_data=_ec2.CfnLaunchTemplate.LaunchTemplateDataProperty(
+                instance_type="t3.small",
+                user_data=Fn.base64(user_data)
+            )
+        )
+
+        cluster.add_nodegroup_capacity("extra-ng",
+            launch_template_spec=eks.LaunchTemplateSpec(
+                id=lt.ref,
+                version=lt.attr_latest_version_number
+            )
+        )
+
+
+
+
+
+
+
+
+####################### TBD ###################### 
+
+
+
+        # documentation CFN
+        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-spotfleet.html
+        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-launchtemplate-launchtemplatedata.html
+        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-spotfleet-spotfleetrequestconfigdata.html
+        # 
+
+        # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_ec2/CfnSpotFleet.html#
+        # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_ec2/CfnSpotFleet.html#aws_cdk.aws_ec2.CfnSpotFleet.SpotFleetRequestConfigDataProperty
+
+        block_device_mapping = _ec2.CfnSpotFleet.BlockDeviceMappingProperty(
+                        device_name="deviceName",
+
+                        # the properties below are optional
+                        ebs=_ec2.CfnSpotFleet.EbsBlockDeviceProperty(
+                            delete_on_termination=False,
+                            encrypted=False,
+                            iops=123,
+                            snapshot_id="snapshotId",
+                            volume_size=123,
+                            volume_type="volumeType"
+                        ),
+                        no_device="noDevice",
+                        virtual_name="virtualName"
+                    )
+
+        network_interface = _ec2.CfnSpotFleet.InstanceNetworkInterfaceSpecificationProperty(
+                        associate_public_ip_address=False,
+                        delete_on_termination=False,
+                        description="description",
+                        device_index=123,
+                        groups=["groups"],
+                        ipv6_address_count=123,
+                        ipv6_addresses=[_ec2.CfnSpotFleet.InstanceIpv6AddressProperty(
+                            ipv6_address="ipv6Address"
+                        )],
+                        network_interface_id="networkInterfaceId",
+                        private_ip_addresses=[_ec2.CfnSpotFleet.PrivateIpAddressSpecificationProperty(
+                            private_ip_address="privateIpAddress",
+
+                            # the properties below are optional
+                            primary=False
+                        )],
+                        secondary_private_ip_address_count=123,
+                        subnet_id="subnetId"
+                    )
+
+        launch_specifications = _ec2.CfnSpotFleet.SpotFleetLaunchSpecificationProperty(
+                    image_id="imageId",
+
+                    # the properties below are optional
+                    block_device_mappings=[block_device_mapping],
+                    ebs_optimized=False,
+                    iam_instance_profile=_ec2.CfnSpotFleet.IamInstanceProfileSpecificationProperty(
+                        arn="arn"
+                    ),
+                    instance_requirements=_ec2.CfnSpotFleet.InstanceRequirementsRequestProperty(
+                        accelerator_count=_ec2.CfnSpotFleet.AcceleratorCountRequestProperty(
+                            max=123,
+                            min=123
+                        ),
+                        accelerator_manufacturers=["acceleratorManufacturers"],
+                        accelerator_names=["acceleratorNames"],
+                        accelerator_total_memory_mi_b=_ec2.CfnSpotFleet.AcceleratorTotalMemoryMiBRequestProperty(
+                            max=123,
+                            min=123
+                        ),
+                        accelerator_types=["acceleratorTypes"],
+                        bare_metal="bareMetal",
+                        baseline_ebs_bandwidth_mbps=_ec2.CfnSpotFleet.BaselineEbsBandwidthMbpsRequestProperty(
+                            max=123,
+                            min=123
+                        ),
+                        burstable_performance="burstablePerformance",
+                        cpu_manufacturers=["cpuManufacturers"],
+                        excluded_instance_types=["excludedInstanceTypes"],
+                        instance_generations=["instanceGenerations"],
+                        local_storage="localStorage",
+                        local_storage_types=["localStorageTypes"],
+                        memory_gi_bPer_vCpu=_ec2.CfnSpotFleet.MemoryGiBPerVCpuRequestProperty(
+                            max=123,
+                            min=123
+                        ),
+                        memory_mi_b=_ec2.CfnSpotFleet.MemoryMiBRequestProperty(
+                            max=123,
+                            min=123
+                        ),
+                        network_interface_count=_ec2.CfnSpotFleet.NetworkInterfaceCountRequestProperty(
+                            max=123,
+                            min=123
+                        ),
+                        on_demand_max_price_percentage_over_lowest_price=123,
+                        require_hibernate_support=False,
+                        spot_max_price_percentage_over_lowest_price=123,
+                        total_local_storage_gb=_ec2.CfnSpotFleet.TotalLocalStorageGBRequestProperty(
+                            max=123,
+                            min=123
+                        ),
+                        v_cpu_count=_ec2.CfnSpotFleet.VCpuCountRangeRequestProperty(
+                            max=123,
+                            min=123
+                        )
+                    ),
+                    instance_type="instanceType",
+                    kernel_id="kernelId",
+                    key_name="keyName",
+                    monitoring=_ec2.CfnSpotFleet.SpotFleetMonitoringProperty(
+                        enabled=False
+                    ),
+                    network_interfaces=[network_interface],
+                    placement=_ec2.CfnSpotFleet.SpotPlacementProperty(
+                        availability_zone="availabilityZone",
+                        group_name="groupName",
+                        tenancy="tenancy"
+                    ),
+                    ramdisk_id="ramdiskId",
+                    security_groups=[_ec2.CfnSpotFleet.GroupIdentifierProperty(
+                        group_id="groupId"
+                    )],
+                    spot_price="spotPrice",
+                    subnet_id="subnetId",
+                    tag_specifications=[_ec2.CfnSpotFleet.SpotFleetTagSpecificationProperty(
+                        resource_type="resourceType",
+                        tags=[CfnTag(
+                            key="key",
+                            value="value"
+                        )]
+                    )],
+                    user_data="userData",
+                    weighted_capacity=123
+                )
+
+        lunch_template_config_override = _ec2.CfnSpotFleet.LaunchTemplateOverridesProperty(
+                        availability_zone="availabilityZone",
+                        instance_requirements=_ec2.CfnSpotFleet.InstanceRequirementsRequestProperty(
+                            accelerator_count=_ec2.CfnSpotFleet.AcceleratorCountRequestProperty(
+                                max=123,
+                                min=123
+                            ),
+                            accelerator_manufacturers=["acceleratorManufacturers"],
+                            accelerator_names=["acceleratorNames"],
+                            accelerator_total_memory_mi_b=_ec2.CfnSpotFleet.AcceleratorTotalMemoryMiBRequestProperty(
+                                max=123,
+                                min=123
+                            ),
+                            accelerator_types=["acceleratorTypes"],
+                            bare_metal="bareMetal",
+                            baseline_ebs_bandwidth_mbps=_ec2.CfnSpotFleet.BaselineEbsBandwidthMbpsRequestProperty(
+                                max=123,
+                                min=123
+                            ),
+                            burstable_performance="burstablePerformance",
+                            cpu_manufacturers=["cpuManufacturers"],
+                            excluded_instance_types=["excludedInstanceTypes"],
+                            instance_generations=["instanceGenerations"],
+                            local_storage="localStorage",
+                            local_storage_types=["localStorageTypes"],
+                            memory_gi_bPer_vCpu=_ec2.CfnSpotFleet.MemoryGiBPerVCpuRequestProperty(
+                                max=123,
+                                min=123
+                            ),
+                            memory_mi_b=_ec2.CfnSpotFleet.MemoryMiBRequestProperty(
+                                max=123,
+                                min=123
+                            ),
+                            network_interface_count=_ec2.CfnSpotFleet.NetworkInterfaceCountRequestProperty(
+                                max=123,
+                                min=123
+                            ),
+                            on_demand_max_price_percentage_over_lowest_price=123,
+                            require_hibernate_support=False,
+                            spot_max_price_percentage_over_lowest_price=123,
+                            total_local_storage_gb=_ec2.CfnSpotFleet.TotalLocalStorageGBRequestProperty(
+                                max=123,
+                                min=123
+                            ),
+                            v_cpu_count=_ec2.CfnSpotFleet.VCpuCountRangeRequestProperty(
+                                max=123,
+                                min=123
+                            )
+                        ),
+                        instance_type="instanceType",
+                        priority=123,
+                        spot_price="spotPrice",
+                        subnet_id="subnetId",
+                        weighted_capacity=123
+                    )
+
+        launch_template_config = _ec2.CfnSpotFleet.LaunchTemplateConfigProperty(
+                    launch_template_specification=_ec2.CfnSpotFleet.FleetLaunchTemplateSpecificationProperty(
+                        version="version",
+
+                        # the properties below are optional
+                        launch_template_id="launchTemplateId",
+                        launch_template_name="launchTemplateName"
+                    ),
+                    overrides=[lunch_template_config_override]
+                )
+
+        loadbalancer_config = _ec2.CfnSpotFleet.LoadBalancersConfigProperty(
+                    classic_load_balancers_config=_ec2.CfnSpotFleet.ClassicLoadBalancersConfigProperty(
+                        classic_load_balancers=[_ec2.CfnSpotFleet.ClassicLoadBalancerProperty(
+                            name="name"
+                        )]
+                    ),
+                    target_groups_config=_ec2.CfnSpotFleet.TargetGroupsConfigProperty(
+                        target_groups=[_ec2.CfnSpotFleet.TargetGroupProperty(
+                            arn="arn"
+                        )]
+                    )
+                )
+
+        spot_maintenance_strategy = _ec2.CfnSpotFleet.SpotMaintenanceStrategiesProperty(
+                    capacity_rebalance=_ec2.CfnSpotFleet.SpotCapacityRebalanceProperty(
+                        replacement_strategy="replacementStrategy",
+                        termination_delay=123
+                    )
+                )
+
+        cfn_spot_fleet = _ec2.CfnSpotFleet(self, "MyCfnSpotFleet",
+            spot_fleet_request_config_data=_ec2.CfnSpotFleet.SpotFleetRequestConfigDataProperty(
+                iam_fleet_role="iamFleetRole",
+                target_capacity=123,
+
+                # the properties below are optional
+                allocation_strategy="allocationStrategy",
+                context="context",
+                excess_capacity_termination_policy="excessCapacityTerminationPolicy",
+                instance_interruption_behavior="instanceInterruptionBehavior",
+                instance_pools_to_use_count=123,
+                launch_specifications=[launch_specifications],
+                launch_template_configs=[launch_template_config],
+                load_balancers_config=loadbalancer_config,
+                on_demand_allocation_strategy="onDemandAllocationStrategy",
+                on_demand_max_total_price="onDemandMaxTotalPrice",
+                on_demand_target_capacity=123,
+                replace_unhealthy_instances=False,
+                spot_maintenance_strategies=spot_maintenance_strategy,
+                spot_max_total_price="spotMaxTotalPrice",
+                spot_price="spotPrice",
+                target_capacity_unit_type="targetCapacityUnitType",
+                terminate_instances_with_expiration=False,
+                type="type",
+                valid_from="validFrom",
+                valid_until="validUntil"
+            )
+        )
+
