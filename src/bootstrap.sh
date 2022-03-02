@@ -6,7 +6,7 @@ yum install -y docker conntrack
 service docker start
 
 confdir=/tmp/openvpn
-hostport=1897
+hostport=1897 #TBA use value from config
 hostprotocol=tcp
 dimage=damshenas/openvpn:arm64
 profile_script=/tmp/profile.sh

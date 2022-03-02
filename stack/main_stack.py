@@ -17,8 +17,6 @@ class CdkMainStack(Stack):
         
         with open("src/configs.json", 'r') as f:
             configs = json.load(f)
-            env_configs = configs["environments"][envir]
-            region_specefics = env_configs['region_data'][self.region]
 
         ### S3 core
         lifecycle_rule = _s3.LifecycleRule(
@@ -29,7 +27,7 @@ class CdkMainStack(Stack):
             )
 
         self.artifacts_bucket = _s3.Bucket(self, "{}-ovod-artifacts".format(envir),
-            bucket_name = PhysicalName.GENERATE_IF_NEEDED,
+            bucket_name = "{}-{}".format(envir, configs["s3_bucket_name"]),
             lifecycle_rules = [lifecycle_rule],
             removal_policy = RemovalPolicy.DESTROY,
             auto_delete_objects = True if envir == 'dev' else False,

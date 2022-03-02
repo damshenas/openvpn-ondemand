@@ -3,7 +3,7 @@ import json, os, aws_cdk as cdk
 from stack.main_stack import CdkMainStack
 from stack.region_specefic_stack import CdkRegionSpeceficStack
 
-envir = 'dev' if not 'env' in os.environ else os.environ['env']
+envir = 'dev' if not 'env' in os.environ else os.environ['env'].lower()
 
 with open("src/configs.json", 'r') as f:
     configs = json.load(f)

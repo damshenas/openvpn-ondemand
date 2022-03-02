@@ -41,7 +41,7 @@ class CdkRegionSpeceficStack(Stack):
 
         security_group.add_ingress_rule(
             _ec2.Peer.any_ipv4(),
-            _ec2.Port.tcp(1897), #make sure to change it if you changed the default port #TBU
+            _ec2.Port.tcp(configs["tcp_udp_port"]),
         )
         
         CfnOutput(self, "security_group_id", value=security_group.security_group_id)
@@ -60,29 +60,24 @@ class CdkRegionSpeceficStack(Stack):
         # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-spotfleet-spotfleetrequestconfigdata.html
         # 
 
-        # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_ec2/CfnSpotFleet.html
-        # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_ec2/CfnSpotFleet.html#aws_cdk.aws_ec2.CfnSpotFleet.SpotFleetRequestConfigDataProperty
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/CfnSpotFleet.html
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/CfnLaunchTemplate.html
 
-        block_device_mapping1 = _ec2.CfnSpotFleet.BlockDeviceMappingProperty(
+        block_device_mapping1 = _ec2.CfnLaunchTemplate.BlockDeviceMappingProperty(
             device_name="xvdb",
-            ebs=_ec2.CfnSpotFleet.EbsBlockDeviceProperty(
+            ebs=_ec2.CfnLaunchTemplate.EbsProperty(
                 delete_on_termination=True,
                 volume_size=8,
                 volume_type="gp3"
             )
         )
 
-        instance_role_name = "{}_{}".format(envir, configs['instance_role_name']),
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        diff = timedelta(weeks=260) # equals roughly to 5 years
+        future = now + diff
 
-        # instance_requirements = _ec2.CfnSpotFleet.InstanceRequirementsRequestProperty(
-        #     burstable_performance="required", # only t2, t3, t3a, t4g
-        #     cpu_manufacturers=["amazon-web-services"], # AWS CPUs
-        #     instance_generations=["current"],
-        #     memory_mi_b=_ec2.CfnSpotFleet.MemoryMiBRequestProperty(max=1, min=0),
-        #     v_cpu_count=_ec2.CfnSpotFleet.VCpuCountRangeRequestProperty(max=2, min=0)
-        # )
-
-        # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_ec2/CfnLaunchTemplate.html
+        instance_role_name = "{}_{}".format(envir, configs['instance_role_name'])
 
         instance_market_option = _ec2.CfnLaunchTemplate.InstanceMarketOptionsProperty(
             market_type="spot",
@@ -90,7 +85,7 @@ class CdkRegionSpeceficStack(Stack):
                 instance_interruption_behavior="terminate",
                 max_price=configs["max_price"],
                 spot_instance_type="persistent",
-                valid_until="validUntil"
+                valid_until=future.strftime("%Y-%m-%dT%H:%M:%SZ") #YYYY-MM-DDTHH:MM:SSZ #will be in UTC
             )
         )
 
@@ -110,6 +105,17 @@ class CdkRegionSpeceficStack(Stack):
                 )]
             )
 
+
+        with open("src/userdata.sh", 'r') as f:
+            user_data_raw = f.read()
+
+        user_data = user_data_raw.format(
+            1 if envir == 'dev' else 1, #debug_mode
+            "{}-{}".format(envir, configs["s3_bucket_name"]), #artifact_bucket
+            self.region, #region
+            configs["first_username"] #FIRST_USER_NAME
+        )
+
         launch_template_data = _ec2.CfnLaunchTemplate.LaunchTemplateDataProperty(
             block_device_mappings=[block_device_mapping1],
             iam_instance_profile=_ec2.CfnLaunchTemplate.IamInstanceProfileProperty(name=instance_role_name),
@@ -119,46 +125,25 @@ class CdkRegionSpeceficStack(Stack):
             instance_requirements=instance_requirement,
             key_name=region_specefics['ssh_key_name'],
             security_group_ids=[security_group.security_group_id],
-            tag_specifications=[instance_tag1] #tag instances and volumes on launch
+            tag_specifications=[instance_tag1], #tag instances and volumes on launch
+            # user_data=user_data
         )
 
-        launch_template = _ec2.CfnLaunchTemplate(self, "LaunchTemplate", launch_template_data=launch_template_data)
+        # Resource handler returned message: "Following LaunchTemplateSpecifications are either malformed or 
+        # does not exist: [LaunchTemplateId: LaunchTemplate, Version: 1]. <===
+        # (Service: Ec2, Status Code: 400, Request ID: a93a60bf-969c-4ab8-bf9e-8c4de73b1d48, Extended Request ID: null)" (RequestToken: e674a6d5-e92f-3d4d-e5b4-25b2
+        # d64a1e2f, HandlerErrorCode: GeneralServiceException)
 
-        # launch_specifications = _ec2.CfnSpotFleet.SpotFleetLaunchSpecificationProperty(
-        #             image_id=region_specefics['image_id'],
-        #             block_device_mappings=[block_device_mapping],
-        #             iam_instance_profile=_ec2.CfnSpotFleet.IamInstanceProfileSpecificationProperty(arn=instance_role_arn),
-        #             instance_requirements=instance_requirements,
-        #             # instance_type=["t4g.nano", "t4g.micro"], #If InstanceRequirements is specified, can’t specify InstanceTypes
-        #             key_name=region_specefics['ssh_key_name'],
-        #             security_groups=[_ec2.CfnSpotFleet.GroupIdentifierProperty(
-        #                 group_id=security_group.security_group_id
-        #             )],
-        #             spot_price=configs["max_price"],
-        #             subnet_id="{},{},{}".format(
-        #                 ovod_vpc.public_subnets[0].subnet_id,
-        #                 ovod_vpc.public_subnets[1].subnet_id,
-        #                 ovod_vpc.public_subnets[2].subnet_id
-        #             ),
-        #             tag_specifications=[_ec2.CfnSpotFleet.SpotFleetTagSpecificationProperty(
-        #                 resource_type="resourceType",
-        #                 tags=[CfnTag(
-        #                     key="Name",
-        #                     value="OpenVPN OnDemand Instance"
-        #                 )]
-        #             )],
-        #             # user_data="userData" # trying to keep the logic out of infra so we do not need to redeploy if some logic code is changed
-        #         )
+        launch_template = _ec2.CfnLaunchTemplate(self, "LaunchTemplate", launch_template_data=launch_template_data)
 
         launch_template_config = _ec2.CfnSpotFleet.LaunchTemplateConfigProperty(
             launch_template_specification=_ec2.CfnSpotFleet.FleetLaunchTemplateSpecificationProperty(
                 version=launch_template.attr_latest_version_number,
-                launch_template_id=launch_template.logical_id,
-                launch_template_name=launch_template.launch_template_name
+                launch_template_id=launch_template.ref
             )
         )
 
-        fleet_role_name = "{}_{}".format(envir, configs['fleet_role_name'])
+        fleet_role_name = "{}".format(configs['fleet_role_name']) #to be updated as not supporting different environments #better to create it 
         generic_role_arn = "arn:aws:iam::{}:role/NAME".format(Aws.ACCOUNT_ID)
         fleet_role_arn = generic_role_arn.replace("NAME", fleet_role_name)
 
@@ -173,7 +158,7 @@ class CdkRegionSpeceficStack(Stack):
             )
         )
 
-        _ec2.CfnSpotFleet(self, "MyCfnSpotFleet",
+        spot_fleet = _ec2.CfnSpotFleet(self, "MyCfnSpotFleet",
             spot_fleet_request_config_data=_ec2.CfnSpotFleet.SpotFleetRequestConfigDataProperty(
                 iam_fleet_role=fleet_role_arn,
                 target_capacity=0, # default is 0 but will be changed to 1 by lambda function
@@ -189,8 +174,10 @@ class CdkRegionSpeceficStack(Stack):
                 spot_maintenance_strategies=spot_maintenance_strategy,
                 spot_max_total_price=configs["max_price"],
                 spot_price=configs["max_price"],
-                target_capacity_unit_type="targetCapacityUnitType",
+                target_capacity_unit_type="units",
                 terminate_instances_with_expiration=True,
                 type="maintain"
             )
         )
+
+        spot_fleet.node.add_dependency(launch_template)
