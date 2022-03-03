@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from constructs import Construct
 from aws_cdk import (
-    Stack, CfnOutput, Aws, CfnTag,
+    Stack, CfnOutput, Aws, CfnTag, Expiration, RemovalPolicy,
     aws_ec2 as _ec2
 )
 
@@ -54,13 +54,42 @@ class CdkRegionSpeceficStack(Stack):
         # upon request the target will be 0 (instead of launching instance)
         #
 
-        # documentation CFN
-        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-spotfleet.html
-        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-launchtemplate-launchtemplatedata.html
-        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-spotfleet-spotfleetrequestconfigdata.html
-        # 
 
-        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/CfnSpotFleet.html
+        # # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/LaunchTemplate.html
+
+        # block_device = _ec2.BlockDevice(
+        #     device_name="xvdb",
+        #     volume=_ec2.BlockDeviceVolume.ebs(
+        #         volume_size=8, 
+        #         delete_on_termination=True, 
+        #         volume_type=_ec2.EbsDeviceVolumeType.GENERAL_PURPOSE_SSD
+        #     )
+        # )
+
+        # launch_template_spot_options = _ec2.LaunchTemplateSpotOptions(
+        #     interruption_behavior=_ec2.SpotInstanceInterruption.TERMINATE,
+        #     max_price=configs["max_price"],
+        #     request_type=_ec2.SpotRequestType.PERSISTENT,
+        #     valid_until=Expiration.after(datetime(2029, 12, 29)) #!!!
+        # )
+
+
+
+        # launch_template = _ec2.LaunchTemplate(self, "",
+        #     # launch_template_name='',
+        #     block_devices=[block_device],
+        #     instance_initiated_shutdown_behavior=_ec2.InstanceInitiatedShutdownBehavior.TERMINATE,
+        #     instance_type=_ec2.InstanceType.of(_ec2.InstanceClass.BURSTABLE4_GRAVITON, _ec2.InstanceSize.NANO), # do we need this here?
+        #     machine_image=_ec2.IMachineImage....,
+        #     role=
+        #     security_group=
+        #     spot_options=launch_template_spot_options,
+        #     # user_data=_ec2.UserData.custome("user data script content")
+        # )
+
+        # launch_template.apply_removal_policy(RemovalPolicy.DESTROY)
+
+
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/CfnLaunchTemplate.html
 
         block_device_mapping1 = _ec2.CfnLaunchTemplate.BlockDeviceMappingProperty(
@@ -122,22 +151,24 @@ class CdkRegionSpeceficStack(Stack):
             image_id=region_specefics['image_id'],
             instance_initiated_shutdown_behavior="terminate",
             instance_market_options=instance_market_option,
-            instance_requirements=instance_requirement,
+            # instance_requirements=instance_requirement,
+            instance_type="t4g.nano",
             key_name=region_specefics['ssh_key_name'],
             security_group_ids=[security_group.security_group_id],
             tag_specifications=[instance_tag1], #tag instances and volumes on launch
             # user_data=user_data
         )
 
-        # Resource handler returned message: "Following LaunchTemplateSpecifications are either malformed or 
-        # does not exist: [LaunchTemplateId: LaunchTemplate, Version: 1]. <===
-        # (Service: Ec2, Status Code: 400, Request ID: a93a60bf-969c-4ab8-bf9e-8c4de73b1d48, Extended Request ID: null)" (RequestToken: e674a6d5-e92f-3d4d-e5b4-25b2
-        # d64a1e2f, HandlerErrorCode: GeneralServiceException)
-
         launch_template = _ec2.CfnLaunchTemplate(self, "LaunchTemplate", launch_template_data=launch_template_data)
+
+
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/CfnSpotFleet.html
+
 
         launch_template_config = _ec2.CfnSpotFleet.LaunchTemplateConfigProperty(
             launch_template_specification=_ec2.CfnSpotFleet.FleetLaunchTemplateSpecificationProperty(
+                # version=launch_template.latest_version_number,
+                # launch_template_id=launch_template.launch_template_id
                 version=launch_template.attr_latest_version_number,
                 launch_template_id=launch_template.ref
             )
@@ -158,6 +189,14 @@ class CdkRegionSpeceficStack(Stack):
             )
         )
 
+        # instance_tag1 = _ec2.CfnSpotFleet.SpotFleetTagSpecificationProperty( 
+        #     resource_type="????",
+        #     tags=[CfnTag(
+        #         key="Name",
+        #         value="OpenVPN OnDemand Instance"
+        #     )]
+        # )
+
         spot_fleet = _ec2.CfnSpotFleet(self, "MyCfnSpotFleet",
             spot_fleet_request_config_data=_ec2.CfnSpotFleet.SpotFleetRequestConfigDataProperty(
                 iam_fleet_role=fleet_role_arn,
@@ -174,8 +213,9 @@ class CdkRegionSpeceficStack(Stack):
                 spot_maintenance_strategies=spot_maintenance_strategy,
                 spot_max_total_price=configs["max_price"],
                 spot_price=configs["max_price"],
-                target_capacity_unit_type="units",
+                # target_capacity_unit_type="units", # can only be specified with InstanceRequi rements.
                 terminate_instances_with_expiration=True,
+                # tag_specifications=[instance_tag1],
                 type="maintain"
             )
         )
