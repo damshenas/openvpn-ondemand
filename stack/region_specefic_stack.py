@@ -20,7 +20,7 @@ class CdkRegionSpeceficStack(Stack):
         ### VPC
         ovod_vpc = _ec2.Vpc(self, '{}_ovod_vpc'.format(envir),
             cidr = '10.10.0.0/24',
-            max_azs = 2,
+            max_azs = 5,
             enable_dns_hostnames = True,
             enable_dns_support = True, 
             subnet_configuration=[
@@ -44,6 +44,19 @@ class CdkRegionSpeceficStack(Stack):
             _ec2.Port.tcp(configs["tcp_udp_port"]),
         )
         
+        # no longer required!
+        # CfnOutput(self, "security_group_id", value=security_group.security_group_id)
+        # CfnOutput(self, "vpc_subnet_id", value=ovod_vpc.public_subnets[0].subnet_id)
+
+
+        ### Spot request
+        # create spot request with target 0
+        # the spot request need to use spot config with user data ... perhaps some issues here
+        # - most of the logics will be moved here as infra code
+        # upon request the target will be 0 (instead of launching instance)
+        #
+
+
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/LaunchTemplate.html
 
         block_device = _ec2.BlockDevice(
