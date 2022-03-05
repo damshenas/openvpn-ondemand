@@ -4,7 +4,7 @@
     "instance_role_name": "OpenVPNOnDemand_EC2_role",
     "fleet_role_name": "aws-ec2-spot-fleet-tagging-role",
     "s3_bucket_name": "openvpn-on-demand-s3-bucket",
-    "max_price": "0.004",
+    "max_price": 0.004,
     "tcp_udp_port": 1897,
     "environments": {
         "prd": {

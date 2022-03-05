@@ -2,8 +2,9 @@ import json
 from datetime import datetime
 from constructs import Construct
 from aws_cdk import (
-    Stack, CfnOutput, Aws, CfnTag, Expiration, RemovalPolicy,
-    aws_ec2 as _ec2
+    Stack, CfnOutput, Aws, CfnTag, Expiration, RemovalPolicy, Duration,
+    aws_ec2 as _ec2,
+    aws_iam as _iam,
 )
 
 class CdkRegionSpeceficStack(Stack):
@@ -13,7 +14,6 @@ class CdkRegionSpeceficStack(Stack):
 
         with open("src/configs.json", 'r') as f:
             configs = json.load(f)
-            instance_role_name = configs['instance_role_name']
             env_configs = configs["environments"][envir]
             region_specefics = env_configs['region_data'][self.region]
 
@@ -44,133 +44,77 @@ class CdkRegionSpeceficStack(Stack):
             _ec2.Port.tcp(configs["tcp_udp_port"]),
         )
         
-        CfnOutput(self, "security_group_id", value=security_group.security_group_id)
-        CfnOutput(self, "vpc_subnet_id", value=ovod_vpc.public_subnets[0].subnet_id)
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/LaunchTemplate.html
 
-        ### Spot request
-        # create spot request with target 0
-        # the spot request need to use spot config with user data ... perhaps some issues here
-        # - most of the logics will be moved here as infra code
-        # upon request the target will be 0 (instead of launching instance)
-        #
-
-
-        # # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/LaunchTemplate.html
-
-        # block_device = _ec2.BlockDevice(
-        #     device_name="xvdb",
-        #     volume=_ec2.BlockDeviceVolume.ebs(
-        #         volume_size=8, 
-        #         delete_on_termination=True, 
-        #         volume_type=_ec2.EbsDeviceVolumeType.GENERAL_PURPOSE_SSD
-        #     )
-        # )
-
-        # launch_template_spot_options = _ec2.LaunchTemplateSpotOptions(
-        #     interruption_behavior=_ec2.SpotInstanceInterruption.TERMINATE,
-        #     max_price=configs["max_price"],
-        #     request_type=_ec2.SpotRequestType.PERSISTENT,
-        #     valid_until=Expiration.after(datetime(2029, 12, 29)) #!!!
-        # )
-
-
-
-        # launch_template = _ec2.LaunchTemplate(self, "",
-        #     # launch_template_name='',
-        #     block_devices=[block_device],
-        #     instance_initiated_shutdown_behavior=_ec2.InstanceInitiatedShutdownBehavior.TERMINATE,
-        #     instance_type=_ec2.InstanceType.of(_ec2.InstanceClass.BURSTABLE4_GRAVITON, _ec2.InstanceSize.NANO), # do we need this here?
-        #     machine_image=_ec2.IMachineImage....,
-        #     role=
-        #     security_group=
-        #     spot_options=launch_template_spot_options,
-        #     # user_data=_ec2.UserData.custome("user data script content")
-        # )
-
-        # launch_template.apply_removal_policy(RemovalPolicy.DESTROY)
-
-
-        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/CfnLaunchTemplate.html
-
-        block_device_mapping1 = _ec2.CfnLaunchTemplate.BlockDeviceMappingProperty(
+        block_device = _ec2.BlockDevice(
             device_name="xvdb",
-            ebs=_ec2.CfnLaunchTemplate.EbsProperty(
-                delete_on_termination=True,
-                volume_size=8,
-                volume_type="gp3"
+            volume=_ec2.BlockDeviceVolume.ebs(
+                volume_size=8, 
+                delete_on_termination=True, 
+                volume_type=_ec2.EbsDeviceVolumeType.GP3
             )
         )
 
-        from datetime import datetime, timedelta
-        now = datetime.now()
-        diff = timedelta(weeks=260) # equals roughly to 5 years
-        future = now + diff
+        launch_template_spot_options = _ec2.LaunchTemplateSpotOptions(
+            interruption_behavior=_ec2.SpotInstanceInterruption.TERMINATE,
+            max_price=configs["max_price"],
+            request_type=_ec2.SpotRequestType.PERSISTENT,
+            valid_until=Expiration.after(Duration.days(730)) #roughly 2 years
+        )
 
         instance_role_name = "{}_{}".format(envir, configs['instance_role_name'])
 
-        instance_market_option = _ec2.CfnLaunchTemplate.InstanceMarketOptionsProperty(
-            market_type="spot",
-            spot_options=_ec2.CfnLaunchTemplate.SpotOptionsProperty(
-                instance_interruption_behavior="terminate",
-                max_price=configs["max_price"],
-                spot_instance_type="persistent",
-                valid_until=future.strftime("%Y-%m-%dT%H:%M:%SZ") #YYYY-MM-DDTHH:MM:SSZ #will be in UTC
-            )
+
+
+        # with open("src/userdata.sh", 'r') as f:
+        #     user_data_raw = f.read()
+
+        # user_data = user_data_raw.format(
+        #     1 if envir == 'dev' else 1, #debug_mode
+        #     "{}-{}".format(envir, configs["s3_bucket_name"]), #artifact_bucket
+        #     self.region, #region
+        #     configs["first_username"] #FIRST_USER_NAME
+        # )
+
+        # # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/MachineImageConfig.html
+        # machine_image_config = _ec2.MachineImageConfig(
+        #     image_id=region_specefics['image_id'],
+        #     os_type=_ec2.OperatingSystemType.LINUX,
+        #     user_data=_ec2.UserData.for_linux()
+        # )
+
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/MachineImage.html
+        machine_image_config = _ec2.MachineImage.latest_amazon_linux(
+            cached_in_context=True,
+            generation=_ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+            kernel=_ec2.AmazonLinuxKernel.KERNEL5_X,
+            edition=_ec2.AmazonLinuxEdition.STANDARD,
+            virtualization=_ec2.AmazonLinuxVirt.HVM,
+            storage=_ec2.AmazonLinuxStorage.GENERAL_PURPOSE,
+            cpu_type=_ec2.AmazonLinuxCpuType.ARM_64
         )
 
-        instance_requirement = _ec2.CfnLaunchTemplate.InstanceRequirementsProperty(
-            burstable_performance="required", # only t2, t3, t3a, t4g
-            cpu_manufacturers=["amazon-web-services"], # AWS CPUs
-            instance_generations=["current"],
-            memory_mib=_ec2.CfnLaunchTemplate.MemoryMiBProperty(max=1, min=0),
-            v_cpu_count=_ec2.CfnLaunchTemplate.VCpuCountProperty(max=2, min=0)
-        )
-
-        instance_tag1 = _ec2.CfnLaunchTemplate.TagSpecificationProperty( 
-                resource_type="resourceType",
-                tags=[CfnTag(
-                    key="Name",
-                    value="OpenVPN OnDemand Instance"
-                )]
-            )
-
-
-        with open("src/userdata.sh", 'r') as f:
-            user_data_raw = f.read()
-
-        user_data = user_data_raw.format(
-            1 if envir == 'dev' else 1, #debug_mode
-            "{}-{}".format(envir, configs["s3_bucket_name"]), #artifact_bucket
-            self.region, #region
-            configs["first_username"] #FIRST_USER_NAME
-        )
-
-        launch_template_data = _ec2.CfnLaunchTemplate.LaunchTemplateDataProperty(
-            block_device_mappings=[block_device_mapping1],
-            iam_instance_profile=_ec2.CfnLaunchTemplate.IamInstanceProfileProperty(name=instance_role_name),
-            image_id=region_specefics['image_id'],
-            instance_initiated_shutdown_behavior="terminate",
-            instance_market_options=instance_market_option,
-            # instance_requirements=instance_requirement,
-            instance_type="t4g.nano",
+        launch_template = _ec2.LaunchTemplate(self, "{}_ovod_launch_remplate".format(envir),
+            # launch_template_name='',
+            block_devices=[block_device],
+            instance_initiated_shutdown_behavior=_ec2.InstanceInitiatedShutdownBehavior.TERMINATE,
+            instance_type=_ec2.InstanceType.of(_ec2.InstanceClass.BURSTABLE4_GRAVITON, _ec2.InstanceSize.NANO), # do we need this here?
+            machine_image=machine_image_config,
+            role=_iam.Role.from_role_name(self, "ovod_role_ec2", role_name=instance_role_name),
             key_name=region_specefics['ssh_key_name'],
-            security_group_ids=[security_group.security_group_id],
-            tag_specifications=[instance_tag1], #tag instances and volumes on launch
-            # user_data=user_data
+            security_group=security_group,
+            spot_options=launch_template_spot_options,
+            # user_data=_ec2.UserData.custome("user data script content")
         )
 
-        launch_template = _ec2.CfnLaunchTemplate(self, "LaunchTemplate", launch_template_data=launch_template_data)
-
+        launch_template.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/CfnSpotFleet.html
 
-
         launch_template_config = _ec2.CfnSpotFleet.LaunchTemplateConfigProperty(
             launch_template_specification=_ec2.CfnSpotFleet.FleetLaunchTemplateSpecificationProperty(
-                # version=launch_template.latest_version_number,
-                # launch_template_id=launch_template.launch_template_id
-                version=launch_template.attr_latest_version_number,
-                launch_template_id=launch_template.ref
+                version=launch_template.latest_version_number,
+                launch_template_id=launch_template.launch_template_id
             )
         )
 
@@ -207,12 +151,12 @@ class CdkRegionSpeceficStack(Stack):
                 # launch_specifications=[launch_specifications], # either launch_specifications or launch_template_configs
                 launch_template_configs=[launch_template_config],
                 on_demand_allocation_strategy="lowestPrice",
-                on_demand_max_total_price=configs["max_price"],
+                on_demand_max_total_price=str(configs["max_price"]),
                 on_demand_target_capacity=0,
                 replace_unhealthy_instances=True,
                 spot_maintenance_strategies=spot_maintenance_strategy,
-                spot_max_total_price=configs["max_price"],
-                spot_price=configs["max_price"],
+                spot_max_total_price=str(configs["max_price"]),
+                spot_price=str(configs["max_price"]),
                 # target_capacity_unit_type="units", # can only be specified with InstanceRequi rements.
                 terminate_instances_with_expiration=True,
                 # tag_specifications=[instance_tag1],
@@ -220,4 +164,4 @@ class CdkRegionSpeceficStack(Stack):
             )
         )
 
-        spot_fleet.node.add_dependency(launch_template)
+        # spot_fleet.node.add_dependency(launch_template)
