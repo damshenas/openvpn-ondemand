@@ -67,8 +67,9 @@ class CdkRegionSpeceficStack(Stack):
         launch_template_spot_options = _ec2.LaunchTemplateSpotOptions(
             interruption_behavior=_ec2.SpotInstanceInterruption.TERMINATE,
             max_price=configs["max_price"],
-            request_type=_ec2.SpotRequestType.PERSISTENT,
-            valid_until=valid_until
+            request_type=_ec2.SpotRequestType.ONE_TIME
+            # request_type=_ec2.SpotRequestType.PERSISTENT,
+            # valid_until=valid_until
         )
 
         instance_role_name = "{}_{}".format(envir, configs['instance_role_name'])
@@ -158,7 +159,7 @@ class CdkRegionSpeceficStack(Stack):
                 # target_capacity_unit_type="units", # can only be specified with InstanceRequi rements.
                 terminate_instances_with_expiration=True,
                 # tag_specifications=[instance_tag1],
-                valid_until=valid_until.date.strftime('%Y-%m-%dT%H:%M:%SZ'),
-                type="maintain"
+                # valid_until=valid_until.date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                # type="maintain"
             )
         )
