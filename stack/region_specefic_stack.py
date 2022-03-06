@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from constructs import Construct
 from aws_cdk import (
-    Stack, CfnOutput, Aws, CfnTag, Expiration, RemovalPolicy, Duration,
+    Stack, CfnOutput, Aws, CfnTag, Expiration, RemovalPolicy, Duration, Fn,
     aws_ec2 as _ec2,
     aws_iam as _iam,
 )
@@ -43,17 +43,11 @@ class CdkRegionSpeceficStack(Stack):
             _ec2.Peer.any_ipv4(),
             _ec2.Port.tcp(configs["tcp_udp_port"]),
         )
-        
-        # no longer required!
-        # CfnOutput(self, "security_group_id", value=security_group.security_group_id)
-        # CfnOutput(self, "vpc_subnet_id", value=ovod_vpc.public_subnets[0].subnet_id)
-
 
         ### Spot request
-        # create spot request with target 0
         # the spot request need to use spot config with user data ... perhaps some issues here
         # - most of the logics will be moved here as infra code
-        # upon request the target will be 0 (instead of launching instance)
+        # upon request the target will become 1 (instead of launching instance)
         #
 
 
@@ -68,11 +62,13 @@ class CdkRegionSpeceficStack(Stack):
             )
         )
 
+        valid_until = Expiration.after(Duration.days(730)) #roughly 2 years
+
         launch_template_spot_options = _ec2.LaunchTemplateSpotOptions(
             interruption_behavior=_ec2.SpotInstanceInterruption.TERMINATE,
             max_price=configs["max_price"],
             request_type=_ec2.SpotRequestType.PERSISTENT,
-            valid_until=Expiration.after(Duration.days(730)) #roughly 2 years
+            valid_until=valid_until
         )
 
         instance_role_name = "{}_{}".format(envir, configs['instance_role_name'])
@@ -87,13 +83,6 @@ class CdkRegionSpeceficStack(Stack):
         #     "{}-{}".format(envir, configs["s3_bucket_name"]), #artifact_bucket
         #     self.region, #region
         #     configs["first_username"] #FIRST_USER_NAME
-        # )
-
-        # # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/MachineImageConfig.html
-        # machine_image_config = _ec2.MachineImageConfig(
-        #     image_id=region_specefics['image_id'],
-        #     os_type=_ec2.OperatingSystemType.LINUX,
-        #     user_data=_ec2.UserData.for_linux()
         # )
 
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/MachineImage.html
@@ -128,7 +117,11 @@ class CdkRegionSpeceficStack(Stack):
             launch_template_specification=_ec2.CfnSpotFleet.FleetLaunchTemplateSpecificationProperty(
                 version=launch_template.latest_version_number,
                 launch_template_id=launch_template.launch_template_id
-            )
+            ),
+            overrides=[_ec2.CfnSpotFleet.LaunchTemplateOverridesProperty(
+                subnet_id="subnet-062fc05baec1eb838,subnet-082ecc568362c0f40,subnet-0a5bfc27a7a287a85"
+                # subnet_id=ovod_vpc.select_subnets(subnet_type=_ec2.SubnetType.PUBLIC).subnet_ids
+            )]
         )
 
         fleet_role_name = "{}".format(configs['fleet_role_name']) #to be updated as not supporting different environments #better to create it 
@@ -145,14 +138,6 @@ class CdkRegionSpeceficStack(Stack):
                 termination_delay=7200
             )
         )
-
-        # instance_tag1 = _ec2.CfnSpotFleet.SpotFleetTagSpecificationProperty( 
-        #     resource_type="????",
-        #     tags=[CfnTag(
-        #         key="Name",
-        #         value="OpenVPN OnDemand Instance"
-        #     )]
-        # )
 
         spot_fleet = _ec2.CfnSpotFleet(self, "MyCfnSpotFleet",
             spot_fleet_request_config_data=_ec2.CfnSpotFleet.SpotFleetRequestConfigDataProperty(
@@ -173,8 +158,7 @@ class CdkRegionSpeceficStack(Stack):
                 # target_capacity_unit_type="units", # can only be specified with InstanceRequi rements.
                 terminate_instances_with_expiration=True,
                 # tag_specifications=[instance_tag1],
+                valid_until=valid_until.date.strftime('%Y-%m-%dT%H:%M:%SZ'),
                 type="maintain"
             )
         )
-
-        # spot_fleet.node.add_dependency(launch_template)
