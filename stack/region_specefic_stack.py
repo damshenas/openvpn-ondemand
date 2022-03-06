@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from constructs import Construct
 from aws_cdk import (
-    Stack, CfnOutput, Aws, CfnTag, Expiration, RemovalPolicy, Duration, Fn,
+    Stack, Aws, Expiration, RemovalPolicy, Duration,
     aws_ec2 as _ec2,
     aws_iam as _iam,
 )
@@ -44,15 +44,6 @@ class CdkRegionSpeceficStack(Stack):
             _ec2.Port.tcp(configs["tcp_udp_port"]),
         )
 
-        ### Spot request
-        # the spot request need to use spot config with user data ... perhaps some issues here
-        # - most of the logics will be moved here as infra code
-        # upon request the target will become 1 (instead of launching instance)
-        #
-
-
-        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/LaunchTemplate.html
-
         block_device = _ec2.BlockDevice(
             device_name="xvdb",
             volume=_ec2.BlockDeviceVolume.ebs(
@@ -74,19 +65,18 @@ class CdkRegionSpeceficStack(Stack):
 
         instance_role_name = "{}_{}".format(envir, configs['instance_role_name'])
 
+        with open("stack/userdata.sh", 'r') as f:
+            user_data_raw = f.read()
 
-
-        # with open("src/userdata.sh", 'r') as f:
-        #     user_data_raw = f.read()
-
-        # user_data = user_data_raw.format(
-        #     1 if envir == 'dev' else 1, #debug_mode
-        #     "{}-{}".format(envir, configs["s3_bucket_name"]), #artifact_bucket
-        #     self.region, #region
-        #     configs["first_username"] #FIRST_USER_NAME
-        # )
+        user_data = user_data_raw.format(
+            1 if envir == 'dev' else 1, #debug_mode
+            "{}-{}".format(envir, configs["s3_bucket_name"]), #artifact_bucket
+            self.region, #region
+            configs["first_username"] #FIRST_USER_NAME
+        )
 
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/MachineImage.html
+
         machine_image_config = _ec2.MachineImage.latest_amazon_linux(
             cached_in_context=True,
             generation=_ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
@@ -97,17 +87,19 @@ class CdkRegionSpeceficStack(Stack):
             cpu_type=_ec2.AmazonLinuxCpuType.ARM_64
         )
 
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/LaunchTemplate.html
+
         launch_template = _ec2.LaunchTemplate(self, "{}_ovod_launch_remplate".format(envir),
             # launch_template_name='',
             block_devices=[block_device],
             instance_initiated_shutdown_behavior=_ec2.InstanceInitiatedShutdownBehavior.TERMINATE,
-            instance_type=_ec2.InstanceType.of(_ec2.InstanceClass.BURSTABLE4_GRAVITON, _ec2.InstanceSize.NANO), # do we need this here?
+            instance_type=_ec2.InstanceType.of(_ec2.InstanceClass.BURSTABLE4_GRAVITON, _ec2.InstanceSize.NANO),
             machine_image=machine_image_config,
             role=_iam.Role.from_role_name(self, "ovod_role_ec2", role_name=instance_role_name),
             key_name=region_specefics['ssh_key_name'],
             security_group=security_group,
             spot_options=launch_template_spot_options,
-            # user_data=_ec2.UserData.custome("user data script content")
+            user_data=_ec2.UserData.custom(user_data)
         )
 
         launch_template.apply_removal_policy(RemovalPolicy.DESTROY)
