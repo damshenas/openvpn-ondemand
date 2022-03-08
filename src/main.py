@@ -1,5 +1,5 @@
 import utils, json, os
-env = os.environ['env']
+env = os.environ['env'] #TBU change the name of environament variable as 'env' is too common
 
 def handler(event, context): 
     sbody = event.get("body")
@@ -29,19 +29,20 @@ def handler(event, context):
         return make_response(401, {"status": 'auth_failed'})
 
     utls.update_last_login()
-    instance_status, instance_id = utls.check_if_instance_exists("*OpenVPN*")
+    spot_fleet_request_id, spot_fleet_request_status, spot_fleet_activity_status = utls.check_if_spot_target_exists()
 
     preSignedUrl = utls.gen_s3_url("profiles/{}/{}.ovpn".format(ec2_region, username))
 
-    if not instance_status: 
+    if not spot_fleet_request_id: 
         userdata = utls.generate_ec2_userdata() 
-        utls.run_instance(userdata)
+        utls.add_target_spot_instance(userdata)
         return make_response(202, {"status": "created", "preSignedUrl": preSignedUrl})
-    elif instance_status == "running": 
+    elif spot_fleet_request_status == "active" and spot_fleet_activity_status == "fulfilled": 
+        instance_id = utls.check_if_instance_exists_query_ec2("*OpenVPN*")
         utls.add_profile(instance_id)
         return make_response(200, {"status": "running", "preSignedUrl": preSignedUrl})
 
-    return make_response(201, {"status": instance_status, "preSignedUrl": preSignedUrl})
+    return make_response(201, {"status": spot_fleet_activity_status, "preSignedUrl": preSignedUrl})
 
 def make_response(status, response):
     return {

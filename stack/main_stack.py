@@ -112,7 +112,8 @@ class CdkMainStack(Stack):
                 "iam:PassRole",
                 "s3:ListBucket",
                 "ssm:SendCommand",
-                "cloudformation:DescribeStacks"
+                "cloudformation:DescribeStacks",
+                "ec2:ModifySpotFleetRequest"
             ])
 
         self.openvpn_builder_lambda.add_to_role_policy(ovod_lambda_policy)
@@ -131,7 +132,8 @@ class CdkMainStack(Stack):
         ovod_ec2_policy_profiles = _iam.PolicyStatement(
             effect=_iam.Effect.ALLOW, 
             resources=[
-                "{}/profiles/*".format(self.artifacts_bucket.bucket_arn)
+                "{}/profiles/*".format(self.artifacts_bucket.bucket_arn),
+                "{}/interuptions/*".format(self.artifacts_bucket.bucket_arn)
             ],
             actions=[
                 "s3:PutObject",
@@ -145,6 +147,13 @@ class CdkMainStack(Stack):
                 "s3:ListBucket"
             ])
 
+        ovod_ec2_policy_any = _iam.PolicyStatement(
+            effect=_iam.Effect.ALLOW, 
+            resources=["*"],
+            actions=[
+                "ec2:ModifySpotFleetRequest"
+            ])
+
         ### IAM roles instance profile 
         ovod_ec2_instance_role = _iam.Role(self, "{}_ovod_ec2_instance_role".format(envir),
             role_name="{}_{}".format(envir, configs['instance_role_name']),
@@ -156,6 +165,7 @@ class CdkMainStack(Stack):
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_scripts)
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_profiles)
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_generic)
+        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_any)
 
         ovod_ec2_instance_profile = _iam.CfnInstanceProfile(self, "{}_ovod_ec2_instance_profile".format(envir),
             roles=[ovod_ec2_instance_role.role_name],

@@ -1,22 +1,31 @@
 #!/bin/bash
 
-#Installing docker
+## Installing docker
 yum update -y
 yum install -y docker conntrack
 service docker start
 
+## Variables
 confdir=/tmp/openvpn
 hostport=1897 #TBA use value from config
 hostprotocol=tcp
 dimage=damshenas/openvpn:arm64
 profile_script=/tmp/profile.sh
+notice_script=/tmp/notice.sh
 domain=none.example.com #Just place holder as we will not use a domain 
 
-mkdir -p $confdir
-aws s3 cp s3://ARTIFACTS_S3_BUCKET/openvpn.tar.gz ./
-tar -xvzf openvpn.tar.gz -C $confdir
+## Updating variable place holders for other scripts
+# would be nice to keep all variables in a single place
 
-# preparing the keys and running the openvpn server
+# for spot support
+mkdir -p $confdir
+aws s3 cp s3://_ARTIFACTS_S3_BUCKET_/interuptions/_REGION_/configs.tar.gz ./
+if [ -f "configs.tar.gz" ]; then # check s3 object if exist means we had spot interuption
+  tar -xzf configs.tar.gz -C $confdir
+  aws s3 rm --recursive s3://_ARTIFACTS_S3_BUCKET_/interuptions/_REGION_ # ensure the first provisions are fresh
+fi
+
+## Preparing the keys and running the openvpn server
 docker pull $dimage
 
 if [ ! -f "$confdir/openvpn.conf" ]; then
@@ -30,21 +39,26 @@ if [ ! -f "$confdir/pki/ca.crt" ]; then
 fi
 
 server_ip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+# instace_id=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
 
 sed -i "s/$domain/$server_ip/g" $confdir/ovpn_env.sh
 grep -rl "$domain" $confdir/pki | xargs sed -i "s/$domain/$server_ip/g"
 
-# replacing the default port before running openvpn
+## Replacing the default port before running openvpn
 sed -i "s|1194|$hostport|" $confdir/openvpn.conf
 sed -i "s|udp|$hostprotocol|" $confdir/openvpn.conf
 docker run -v $confdir:/etc/openvpn -d -p $hostport:$hostport/$hostprotocol --cap-add=NET_ADMIN $dimage
 
-# add the first profile
+## Add the first profile
 sed -i "s|HOST_PORT|$hostport|" $profile_script
 sed -i "s|HOST_PROTO|$hostprotocol|" $profile_script
-source $profile_script FIRST_USER_NAME
+source $profile_script _FIRST_USER_NAME_
 
-# minitor connections
+## Monitor notice of interuption (for spot instance)
+source $notice_script &
+notice_script_pid=$!
+
+## Minitor connections
 minutes_without_connection=0
 max_minutes_without_connection=15
 
@@ -65,9 +79,20 @@ do
   fi  
 
   if [ $minutes_without_connection -ge $max_minutes_without_connection ]; then
+
+    kill -9 $notice_script_pid # first stop the notice.sh so it will not recive the notice and move the instance date
     echo "shutting down. $minutes_without_connection minutes without connection"
-    aws s3 rm --recursive s3://ARTIFACTS_S3_BUCKET/profiles/REGION
-    poweroff
+
+    aws s3 rm --recursive s3://_ARTIFACTS_S3_BUCKET_/profiles/_REGION_
+    
+    # finding out the spot_fleet_request_id based on the status (active/modifying)
+    modifying_spot_fleet_request_id=$(aws ec2 describe-spot-fleet-requests --query 'SpotFleetRequestConfigs[?SpotFleetRequestState==`modifying`].[SpotFleetRequestId]' --output text)
+    if [ -z "$modifying_spot_fleet_request_id" ]; then spot_fleet_request_id=$modifying_spot_fleet_request_id; fi
+
+    active_spot_fleet_request_id=$(aws ec2 describe-spot-fleet-requests --query 'SpotFleetRequestConfigs[?SpotFleetRequestState==`active`].[SpotFleetRequestId]' --output text)
+    if [ -z "$active_spot_fleet_request_id" ]; then spot_fleet_request_id=$active_spot_fleet_request_id; fi
+
+    aws ec2 modify-spot-fleet-request --target-capacity 0 --spot-fleet-request-id $spot_fleet_request_id --output text
   else
     sleep 60
   fi  

@@ -13,6 +13,6 @@ if [ ! -f "$confdir/pki/reqs/$user.req" ]; then
   docker run -v $confdir:/etc/openvpn --rm $dimage ovpn_listclients | grep $user
   sed -i "s|1194|$hostport|" $user.ovpn
   sed -i "s|udp|$hostprotocol|" $user.ovpn
-  aws s3 cp $user.ovpn s3://ARTIFACTS_S3_BUCKET/profiles/REGION/$user.ovpn
+  aws s3 cp $user.ovpn s3://_ARTIFACTS_S3_BUCKET_/profiles/REGION/$user.ovpn
 fi
 

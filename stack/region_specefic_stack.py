@@ -20,7 +20,7 @@ class CdkRegionSpeceficStack(Stack):
         ### VPC
         ovod_vpc = _ec2.Vpc(self, '{}_ovod_vpc'.format(envir),
             cidr = '10.10.0.0/24',
-            max_azs = 5,
+            max_azs = 5, # the higher the better for the chance of getting spot instance
             enable_dns_hostnames = True,
             enable_dns_support = True, 
             subnet_configuration=[
@@ -59,8 +59,8 @@ class CdkRegionSpeceficStack(Stack):
             interruption_behavior=_ec2.SpotInstanceInterruption.TERMINATE,
             max_price=configs["max_price"],
             request_type=_ec2.SpotRequestType.ONE_TIME
-            # request_type=_ec2.SpotRequestType.PERSISTENT,
-            # valid_until=valid_until
+            # request_type=_ec2.SpotRequestType.PERSISTENT, #??
+            # valid_until=valid_until #??
         )
 
         instance_role_name = "{}_{}".format(envir, configs['instance_role_name'])
@@ -150,8 +150,8 @@ class CdkRegionSpeceficStack(Stack):
                 spot_price=str(configs["max_price"]),
                 # target_capacity_unit_type="units", # can only be specified with InstanceRequi rements.
                 terminate_instances_with_expiration=True,
-                # tag_specifications=[instance_tag1],
-                # valid_until=valid_until.date.strftime('%Y-%m-%dT%H:%M:%SZ'),
-                # type="maintain"
+                # tag_specifications=[instance_tag1], # TBA
+                # valid_until=valid_until.date.strftime('%Y-%m-%dT%H:%M:%SZ'), #??
+                # type="maintain" #??
             )
         )
