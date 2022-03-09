@@ -54,15 +54,15 @@ class CdkMainStack(Stack):
         )
 
         ### lambda function
-        self.openvpn_builder_lambda = _lambda.Function(self, "{}_ovod_builder".format(envir),
-            function_name="{}_ovod_builder".format(envir),
+        self.openvpn_builder_lambda = _lambda.Function(self, "{}_OpenVPN_OnDemand_Main_Handler".format(envir.capitalize()),
+            function_name="{}_OpenVPN_OnDemand_Main_Handler".format(envir.capitalize()),
             runtime=_lambda.Runtime.PYTHON_3_9,
             architecture=_lambda.Architecture.ARM_64,
             log_retention=_logs.RetentionDays.THREE_MONTHS,
             timeout=Duration.seconds(10),
             environment={
                 "region": self.region,
-                "env": envir,
+                "environment": envir,
                 "debug_mode": 'false',
                 "artifacts_bucket": self.artifacts_bucket.bucket_name
             },
@@ -97,6 +97,9 @@ class CdkMainStack(Stack):
             effect=_iam.Effect.ALLOW, 
             resources=['*'], #TBU not secure
             actions=[
+                "ec2:ModifySpotFleetRequest",
+                "ec2:DescribeSpotFleetRequests",
+                "ec2:DescribeSpotFleetInstances",
                 "ec2:RunInstances", 
                 "ec2:TerminateInstances", 
                 "ec2:StartInstances",
@@ -112,8 +115,7 @@ class CdkMainStack(Stack):
                 "iam:PassRole",
                 "s3:ListBucket",
                 "ssm:SendCommand",
-                "cloudformation:DescribeStacks",
-                "ec2:ModifySpotFleetRequest"
+                "cloudformation:DescribeStacks"
             ])
 
         self.openvpn_builder_lambda.add_to_role_policy(ovod_lambda_policy)

@@ -1,5 +1,5 @@
 import utils, json, os
-env = os.environ['env'] #TBU change the name of environament variable as 'env' is too common
+environment = os.environ['environment'] 
 
 def handler(event, context): 
     sbody = event.get("body")
@@ -16,33 +16,34 @@ def handler(event, context):
     with open("configs.json", 'r') as f:
         configs = json.load(f)
         name = configs['app_name']
-        env_configs = configs["environments"][env]
+        first_username = configs['first_username'] #just for initial server provisioning
+        env_configs = configs["environments"][environment]
+        default_region = env_configs['default_region']
         region_specefics = env_configs['region_data']
 
     if ec2_region not in region_specefics.keys():
         return make_response(402, {"status": 'region_not_supported'})
 
-    utls = utils.main(username, name, ec2_region, region_specefics[ec2_region])
+    utls = utils.main(username, name, ec2_region, region_specefics[ec2_region], default_region)
 
     authenticated = utls.is_login_valid(password)
     if not authenticated: 
         return make_response(401, {"status": 'auth_failed'})
 
     utls.update_last_login()
-    spot_fleet_request_id, spot_fleet_request_status, spot_fleet_activity_status = utls.check_if_spot_target_exists()
+    instance_id, spot_fleet_request_id = utls.find_useable_instance()
 
+    if not instance_id: username = first_username
     preSignedUrl = utls.gen_s3_url("profiles/{}/{}.ovpn".format(ec2_region, username))
 
-    if not spot_fleet_request_id: 
-        userdata = utls.generate_ec2_userdata() 
-        utls.add_target_spot_instance(userdata)
+    # + make sure the instance really does not exist otherwise the user will never get the profile cert
+    if not instance_id: 
+        utls.upload_bash_scripts() 
+        utls.increase_spot_instance_target_capacity(spot_fleet_request_id)
         return make_response(202, {"status": "created", "preSignedUrl": preSignedUrl})
-    elif spot_fleet_request_status == "active" and spot_fleet_activity_status == "fulfilled": 
-        instance_id = utls.check_if_instance_exists_query_ec2("*OpenVPN*")
-        utls.add_profile(instance_id)
-        return make_response(200, {"status": "running", "preSignedUrl": preSignedUrl})
 
-    return make_response(201, {"status": spot_fleet_activity_status, "preSignedUrl": preSignedUrl})
+    utls.add_profile(instance_id)
+    return make_response(200, {"status": "running", "preSignedUrl": preSignedUrl})
 
 def make_response(status, response):
     return {
