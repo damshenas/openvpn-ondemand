@@ -86,13 +86,16 @@ do
     aws s3 rm --recursive s3://_ARTIFACTS_S3_BUCKET_/profiles/_REGION_
     
     # finding out the spot_fleet_request_id based on the status (active/modifying)
-    modifying_spot_fleet_request_id=$(aws ec2 describe-spot-fleet-requests --query 'SpotFleetRequestConfigs[?SpotFleetRequestState==`modifying`].[SpotFleetRequestId]' --output text)
-    if [ -z "$modifying_spot_fleet_request_id" ]; then spot_fleet_request_id=$modifying_spot_fleet_request_id; fi
+    # what happens if there are more than 1 spot fleet requets?
+    modifying_spot_fleet_request_id=$(aws ec2 describe-spot-fleet-requests --region _REGION_ --query 'SpotFleetRequestConfigs[?SpotFleetRequestState==`modifying`].[SpotFleetRequestId]' --output text)
+    if [ -n "$modifying_spot_fleet_request_id" ]; then spot_fleet_request_id=$modifying_spot_fleet_request_id; fi
 
-    active_spot_fleet_request_id=$(aws ec2 describe-spot-fleet-requests --query 'SpotFleetRequestConfigs[?SpotFleetRequestState==`active`].[SpotFleetRequestId]' --output text)
-    if [ -z "$active_spot_fleet_request_id" ]; then spot_fleet_request_id=$active_spot_fleet_request_id; fi
+    active_spot_fleet_request_id=$(aws ec2 describe-spot-fleet-requests --region _REGION_ --query 'SpotFleetRequestConfigs[?SpotFleetRequestState==`active`].[SpotFleetRequestId]' --output text)
+    if [ -n "$active_spot_fleet_request_id" ]; then spot_fleet_request_id=$active_spot_fleet_request_id; fi
 
-    aws ec2 modify-spot-fleet-request --target-capacity 0 --spot-fleet-request-id $spot_fleet_request_id --output text
+    aws ec2 modify-spot-fleet-request --region _REGION_ --target-capacity 0 --spot-fleet-request-id $spot_fleet_request_id --output text
+
+    break
   else
     sleep 60
   fi  

@@ -153,7 +153,9 @@ class CdkMainStack(Stack):
             effect=_iam.Effect.ALLOW, 
             resources=["*"],
             actions=[
-                "ec2:ModifySpotFleetRequest"
+                "ec2:ModifySpotFleetRequest",
+                "ec2:DescribeSpotFleetRequests",
+                "ec2:DescribeSpotFleetInstances"
             ])
 
         ### IAM roles instance profile 
