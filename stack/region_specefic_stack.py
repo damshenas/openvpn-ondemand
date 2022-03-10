@@ -1,4 +1,4 @@
-import json
+import json, os
 from datetime import datetime
 from constructs import Construct
 from aws_cdk import (
@@ -69,10 +69,12 @@ class CdkRegionSpeceficStack(Stack):
             user_data_raw = f.read()
 
         user_data = user_data_raw.format(
-            1 if envir == 'dev' else 1, #debug_mode
-            "{}-{}".format(envir, configs["s3_bucket_name"]), #artifact_bucket
+            1 if envir == 'dev' else 1, #debug mode
+            "{}-{}".format(envir, configs["s3_bucket_name"]), #artifact s3 bucket
             self.region, #region
-            configs["first_username"] #FIRST_USER_NAME
+            configs["first_username"], #first user name
+            os.environ["DDNS_UPDATE_URL"], #DDNS update url from pipeline environment variable
+            os.environ["DDNS_DOMAIN_NAME"], #DDNS domain name from pipeline environment variable
         )
 
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/MachineImage.html
@@ -104,8 +106,6 @@ class CdkRegionSpeceficStack(Stack):
 
         launch_template.apply_removal_policy(RemovalPolicy.DESTROY)
 
-        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/CfnSpotFleet.html
-
         launch_template_config = _ec2.CfnSpotFleet.LaunchTemplateConfigProperty(
             launch_template_specification=_ec2.CfnSpotFleet.FleetLaunchTemplateSpecificationProperty(
                 version=launch_template.latest_version_number,
@@ -131,6 +131,8 @@ class CdkRegionSpeceficStack(Stack):
                 termination_delay=7200
             )
         )
+
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/CfnSpotFleet.html
 
         spot_fleet = _ec2.CfnSpotFleet(self, "MyCfnSpotFleet",
             spot_fleet_request_config_data=_ec2.CfnSpotFleet.SpotFleetRequestConfigDataProperty(

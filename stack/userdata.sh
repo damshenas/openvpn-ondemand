@@ -1,25 +1,22 @@
 #!/bin/bash
 
-export debug_mode={}
-artifact_bucket={}
-region={}
-bootstrap_file=/tmp/bootstrap.sh
-profile_file=/tmp/profile.sh
-notice_file=/tmp/notice.sh
+## Variables
+export oo_debug_mode={}
+export oo_artifact_bucket={}
+export oo_region={}
+export oo_first_username={}
+export oo_ddns_url={}
+export oo_domain={} #=none.example.com
+export oo_bootstrap_script=/tmp/bootstrap.sh
+export oo_profile_script=/tmp/profile.sh
+export oo_notice_script=/tmp/notice.sh
+export oo_temdir=/tmp
 
-aws s3 sync s3://$artifact_bucket/scripts/ /tmp/
-chmod +x /tmp/*.sh
+aws s3 sync s3://$oo_artifact_bucket/scripts/ $oo_temdir/
 
-vi $bootstrap_file -c "set ff=unix" -c ":wq"
-vi $profile_file -c "set ff=unix" -c ":wq"
-vi $notice_file -c "set ff=unix" -c ":wq"
+for script_file in $oo_temdir/*.sh; do
+    vi $script_file -c "set ff=unix" -c ":wq"
+    chmod +x $script_file
+done
 
-sed -i "s|_FIRST_USER_NAME_|{}|" $bootstrap_file
-sed -i "s|_ARTIFACTS_S3_BUCKET_|$artifact_bucket|" $bootstrap_file
-sed -i "s|_ARTIFACTS_S3_BUCKET_|$artifact_bucket|" $profile_file
-sed -i "s|_ARTIFACTS_S3_BUCKET_|$artifact_bucket|" $notice_file
-sed -i "s|_REGION_|$region|" $bootstrap_file
-sed -i "s|_REGION_|$region|" $profile_file
-sed -i "s|_REGION_|$region|" $notice_file
-
-source $bootstrap_file
+source $oo_bootstrap_script
