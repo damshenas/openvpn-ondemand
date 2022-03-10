@@ -1,37 +1,28 @@
 import boto3, os, time, json
 
 class main:
-    def __init__(self, username, name, ec2_region, region_specefics, region='us-east-1'):
+    def __init__(self, username, name, ec2_region, region_specefics, region):
         self.username = username
         self.ec2_region = ec2_region
         self.name = name
-        self.env = os.environ['env']
+        self.environment = os.environ['environment']
         self.artifacts_bucket = os.environ['artifacts_bucket']
-        self.ec2_role = os.environ['ec2_instance_role']
         self.dynamodb_table = os.environ['dynamodb_table_name']
-        self.debug_mode = 0 if os.environ['debug_mode'] == 'true' else 1
-
         self.ssm_client = boto3.client('ssm', ec2_region)
         self.ec2_client = boto3.client('ec2',ec2_region)
-        self.security_group_id, self.vpc_subnet_id = self.get_vpc_sg()
-        self.ssh_key_name =  region_specefics['ssh_key_name']
-        self.image_id =  region_specefics['image_id']
-
         self.s3_client = boto3.client('s3',region)
         self.ddb_client = boto3.client('dynamodb',region)
+        self.debug_mode = 0 if os.environ['debug_mode'] == 'true' else 1 # this will be done using environment of the stack
 
-    def generate_ec2_userdata(self):
-        for f in ["bootstrap.sh", "profile.sh"]: 
-            self.uplaod_to_s3(f)
-        return self.file_get_contents("userdata.sh").format(
-            self.debug_mode, self.artifacts_bucket, self.ec2_region, self.username
-        )
+    def upload_bash_scripts(self):
+        for f in ["bootstrap.sh", "profile.sh", "notice.sh"]: 
+            self.uplaod_script_to_s3(f)
 
     def file_get_contents(self, filename):
         with open(filename) as f:
             return f.read()
 
-    def uplaod_to_s3(self, file_path):
+    def uplaod_script_to_s3(self, file_path):
         target_key = "scripts/{}".format(file_path.split('/')[-1])
         if not self.debug_mode and self.check_s3_obj(target_key): return target_key # if exist and not debugging skip uploading scripts
         self.s3_client.upload_file(file_path, self.artifacts_bucket, target_key)
@@ -49,7 +40,6 @@ class main:
             TableName=self.dynamodb_table,
             Key={'username': {'S': self.username}}
         )
-
         return True if 'Item' in response and response['Item']['password']['S'] == password else False
 
     def update_last_login(self):
@@ -60,16 +50,65 @@ class main:
             ExpressionAttributeValues={':ll': {"N": str(int(time.time()))}} 
         )
 
-    def check_if_instance_exists(self, name): # name example: *OpenVPN*
-        instances = self.ec2_client.describe_instances( Filters=[{'Name': 'tag:Name', 'Values': [name]}])
+    def find_active_spot_fleet_requests(self):
+        response = []
+        sf_requests = self.ec2_client.describe_spot_fleet_requests().get("SpotFleetRequestConfigs")
+        for sf_req in sf_requests:
+            if sf_req.get("SpotFleetRequestState") == "active":
+                response.append({
+                    "fleet_request_id": sf_req.get("SpotFleetRequestId"),
+                    "request_status": sf_req.get("SpotFleetRequestState"),
+                    "activity_status": sf_req.get("ActivityStatus"),
+                    "target_capacity": sf_req.get("SpotFleetRequestConfig").get("TargetCapacity")
+                })
+        return response
 
-        if len(instances["Reservations"]) > 0:
-            for reservation in instances["Reservations"]:
-                for instance in reservation["Instances"]:
-                    if instance["State"]["Name"] == "running":  return ["running", instance["InstanceId"]]
-                    if instance["State"]["Name"] == "pending":  return ["pending", instance["InstanceId"]]
+    # simply returns all active instances requested by spot fleet request id
+    def find_active_spot_instances(self, sf_req_id):
+        response = []
+        # https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-spot-fleet-instances.html
+        sf_active_instances = self.ec2_client.describe_spot_fleet_instances(SpotFleetRequestId=sf_req_id).get("ActiveInstances")
+        for active_instance in sf_active_instances:
+            response.append({
+                "instance_id": active_instance.get("InstanceId"),
+                "instance_type": active_instance.get("InstanceType"),
+                "instance_request_id": active_instance.get("SpotInstanceRequestId"),
+                "instance_health": active_instance.get("InstanceHealth")
+            })
+        return response
 
-        return ["", ""]
+    # returns all active spot instance requests including the instance id
+    # has more details compared to find_active_spot_instances
+    def find_active_spot_instance_requests(self):
+        response = []
+        # https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-spot-instance-requests.html
+        sf_instance_requests = self.ec2_client.describe_spot_instance_requests()
+        for sf_instance_req in sf_instance_requests:
+            if sf_instance_req.get("State") == "active":
+                response.append({
+                    "instance_request_id": sf_instance_req.get("SpotInstanceRequestId"),
+                    "instance_id": sf_instance_req.get("InstanceId"),
+                    "status": sf_instance_req.get("Status").get("Code"),
+                })
+        return response
+
+    # Finding if an instance is already running and suitable to be used
+    # + what if status is "pending_fulfillment"
+    # + what if the instance is being created
+    # + what if 2 people request with small delay (race condition)
+    # + use tags to find the instances
+    def find_useable_instance(self):
+        sf_requests = self.find_active_spot_fleet_requests()
+        for sf_req in sf_requests:
+            if sf_req.get("target_capacity") == 1 and sf_req.get("activity_status") == "fulfilled":
+                sf_request_id = sf_req.get("fleet_request_id")
+                active_instances = self.find_active_spot_instances(sf_request_id)
+                if len(active_instances) > 0:
+                    instance_id = active_instances[0].get("instance_id")
+                    return [instance_id, sf_request_id]
+        # this is a bad practice because if we have 2 active request we will pick the first one!!
+        # better to use instance tages or pulling by instance
+        return [None, sf_requests[0].get("fleet_request_id")]
 
     def gen_s3_url(self, key_name): #create presigned url
         return self.s3_client.generate_presigned_url('get_object', 
@@ -84,68 +123,9 @@ class main:
             Comment='Creating profile for user {} in instance {}'.format(self.username, instance_id),
             Parameters={'commands': ['source /tmp/profile.sh {}'.format(self.username)]})
 
-    def get_vpc_sg(self):
-        stack_id = "{}{}SpeceficStack{}".format(self.env.capitalize(), self.name, self.ec2_region.replace('-',''))
-        cf_client = boto3.client('cloudformation', self.ec2_region)
-        response =  cf_client.describe_stacks(StackName=stack_id)
-        outputs = response["Stacks"][0]["Outputs"]
-        for output in outputs:
-            if output["OutputKey"] == "securitygroupid": sg_id = output['OutputValue']
-            if output["OutputKey"] == "vpcsubnetid": vpc_id = output['OutputValue']
-
-        return sg_id, vpc_id
-
-    def run_instance(self, userdata):
-        instance = self.ec2_client.run_instances(
-            BlockDeviceMappings=[
-                {
-                    'DeviceName': 'xvdb',
-                    'Ebs': {
-                        'DeleteOnTermination': True,
-                        'VolumeSize': 8,
-                        'VolumeType': 'gp2',
-                    },
-                },
-            ],
-            ImageId=self.image_id,
-            InstanceType="t4g.nano",
-            MaxCount=1,
-            MinCount=1,
-            SecurityGroupIds=[self.security_group_id],
-
-            SubnetId=self.vpc_subnet_id,
-            UserData=userdata,
-            KeyName=self.ssh_key_name,
-
-            DisableApiTermination=False,
-
-            InstanceInitiatedShutdownBehavior='terminate',
-
-            TagSpecifications=[
-                {
-                    'ResourceType': 'instance',
-                    'Tags': [
-                        {
-                            'Key': 'Name',
-                            'Value': 'OpenVPN OnDemand Instance'
-                        },
-                    ]
-                },
-            ],
-
-            IamInstanceProfile={'Arn': self.ec2_role},
-
-            # InstanceMarketOptions={ # to save costs
-            #     'MarketType': 'spot',
-            #     'SpotOptions': {
-            #         'MaxPrice': 'string',
-            #         'SpotInstanceType': 'one-time'|'persistent',
-            #         'BlockDurationMinutes': 123,
-            #         'ValidUntil': datetime(2015, 1, 1),
-            #         'InstanceInterruptionBehavior': 'hibernate'|'stop'|'terminate'
-            #     }
-            # },
-            )
-
-
-        return instance['Instances'][0]['InstanceId']
+    def increase_spot_instance_target_capacity(self, sf_request_id):
+        return self.ec2_client.modify_spot_fleet_request(
+            SpotFleetRequestId=sf_request_id,
+            TargetCapacity=1,
+            OnDemandTargetCapacity=0,
+        )

@@ -7,6 +7,9 @@ The solution provisions different AWS resources such as: S3, Lambda, SSM Params,
 
 Cost estimation for all setup is (with low usage assumptions) ~ $3 per month. Of course this can change depend on the hours the server is running and amount of data communicated. Please check the following link for more information: https://calculator.aws/#/estimate?id=0a424fee9a16e4880ecd8310f97c2993d1cad0e2
 
+export CDK_DEFAULT_ACCOUNT=111111111111
+cdk synth
+
 cdk bootstrap aws://ACCOUNT/REGION
 cdk deploy --all --require-approval=never
 cdk destroy --al --force

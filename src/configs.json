@@ -1,5 +1,11 @@
 {
     "app_name": "OpenVPNOnDemand",
+    "first_username": "user1",
+    "instance_role_name": "OpenVPNOnDemand_EC2_role",
+    "fleet_role_name": "aws-ec2-spot-fleet-tagging-role",
+    "s3_bucket_name": "openvpn-on-demand-s3-bucket",
+    "max_price": 0.004,
+    "tcp_udp_port": 1897,
     "environments": {
         "prd": {
             "default_region": "us-east-1",
@@ -22,8 +28,8 @@
             "default_region": "us-east-2",
             "region_data": {
                 "us-east-2": {
-                    "image_id": "ami-0b6705f88b1f688c1",
-                    "ssh_key_name": "n.virginia.def.key"
+                    "image_id": "ami-0cc2ff2b4c4608a2f",
+                    "ssh_key_name": "ohio.def.key"
                 }
             }
         }
