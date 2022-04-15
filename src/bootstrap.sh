@@ -17,8 +17,9 @@ curl -s $oo_ddns_url
 docker pull $oo_docker_image
 
 # Restoring OpenVPN configs and certs if exist
+cd /tmp
 aws s3 cp s3://$oo_artifact_bucket/configs/$oo_region/openvpn.tar.gz ./
-if [ -f "openvpn.tar.gz" ]; then # check s3 object if exist means we had spot interuption
+if [ -f "openvpn.tar.gz" ]; then
   mkdir -p $oo_confdir
   tar -xzf openvpn.tar.gz -C $oo_confdir
 fi
@@ -40,10 +41,10 @@ sed -i "s|udp|$oo_hostprotocol|" $oo_confdir/openvpn.conf
 docker run -v $oo_confdir:/etc/openvpn -d -p $oo_hostport:$oo_hostport/$oo_hostprotocol --cap-add=NET_ADMIN $oo_docker_image
 
 # For spot interuption we restore user profiles
+cd /tmp
 aws s3 cp s3://$oo_artifact_bucket/interuptions/$oo_region/profiles.tar.gz ./
 if [ -f "profiles.tar.gz" ]; then # check s3 object if exist means we had spot interuption
   # hot to restore some files in some directories?
-  cd /tmp
   tar -xzf profiles.tar.gz
   cp -n pki/reqs/* $oo_confdir/pki/reqs/
   cp -n pki/private/* $oo_confdir/pki/private/

@@ -12,7 +12,7 @@ class main:
         self.ec2_client = boto3.client('ec2',ec2_region)
         self.s3_client = boto3.client('s3',region)
         self.ddb_client = boto3.client('dynamodb',region)
-        self.debug_mode = 0 if os.environ['debug_mode'] == 'true' else 1 # this will be done using environment of the stack
+        self.debug_mode = 0 if os.environ['environment'] == 'dev' else 1
 
     def upload_bash_scripts(self):
         for f in ["bootstrap.sh", "profile.sh", "notice.sh"]: 

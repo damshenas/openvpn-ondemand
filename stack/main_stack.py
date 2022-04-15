@@ -63,7 +63,6 @@ class CdkMainStack(Stack):
             environment={
                 "region": self.region,
                 "environment": envir,
-                "debug_mode": 'false',
                 "artifacts_bucket": self.artifacts_bucket.bucket_name
             },
             handler="main.handler",
