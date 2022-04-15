@@ -135,7 +135,8 @@ class CdkMainStack(Stack):
             effect=_iam.Effect.ALLOW, 
             resources=[
                 "{}/profiles/*".format(self.artifacts_bucket.bucket_arn),
-                "{}/interuptions/*".format(self.artifacts_bucket.bucket_arn)
+                "{}/interuptions/*".format(self.artifacts_bucket.bucket_arn),
+                "{}/configs/*".format(self.artifacts_bucket.bucket_arn)
             ],
             actions=[
                 "s3:PutObject",
