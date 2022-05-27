@@ -119,7 +119,6 @@ class CdkRegionSpeceficStack(Stack):
                 launch_template_id=launch_template.launch_template_id
             ),
             overrides=[_ec2.CfnSpotFleet.LaunchTemplateOverridesProperty(
-                # subnet_id="subnet-062fc05baec1eb838,subnet-082ecc568362c0f40,subnet-0a5bfc27a7a287a85"
                 subnet_id=Fn.join(',', ovod_vpc.select_subnets(subnet_type=_ec2.SubnetType.PUBLIC).subnet_ids)
             )]
         )
