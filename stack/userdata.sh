@@ -12,7 +12,7 @@ export oo_profile_script=/tmp/profile.sh
 export oo_notice_script=/tmp/notice.sh
 export oo_temdir=/tmp
 
-yum install aws-cli -y
+pip3 install --no-cache-dir awscli
 
 aws s3 sync s3://$oo_artifact_bucket/scripts/ $oo_temdir/
 
