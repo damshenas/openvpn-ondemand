@@ -12,10 +12,10 @@ class CdkRegionSpeceficStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, envir: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        self.ssh_key_name = "{}.def.key".format(self.region)
+
         with open("src/configs.json", 'r') as f:
             configs = json.load(f)
-            env_configs = configs["environments"][envir]
-            region_specefics = env_configs['region_data'][self.region]
 
         ### VPC
         ovod_vpc = _ec2.Vpc(self, '{}_ovod_vpc'.format(envir),
@@ -79,14 +79,21 @@ class CdkRegionSpeceficStack(Stack):
 
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/MachineImage.html
 
-        machine_image_config = _ec2.MachineImage.latest_amazon_linux(
-            cached_in_context=True,
-            generation=_ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
-            kernel=_ec2.AmazonLinuxKernel.KERNEL5_X,
-            edition=_ec2.AmazonLinuxEdition.STANDARD,
-            virtualization=_ec2.AmazonLinuxVirt.HVM,
-            storage=_ec2.AmazonLinuxStorage.GENERAL_PURPOSE,
-            cpu_type=_ec2.AmazonLinuxCpuType.ARM_64
+        # machine_image_config = _ec2.MachineImage.latest_amazon_linux(
+        #     cached_in_context=True,
+        #     generation=_ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+        #     kernel=_ec2.AmazonLinuxKernel.KERNEL5_X,
+        #     edition=_ec2.AmazonLinuxEdition.STANDARD,
+        #     virtualization=_ec2.AmazonLinuxVirt.HVM,
+        #     storage=_ec2.AmazonLinuxStorage.GENERAL_PURPOSE,
+        #     cpu_type=_ec2.AmazonLinuxCpuType.ARM_64
+        # )
+
+        # finding the ECS optimized AMI which has docker installed
+        # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/retrieve-ecs-optimized_AMI.html
+
+        machine_image_config = _ec2.MachineImage.from_ssm_parameter (
+            parameter_name = "/aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended/image_id"
         )
 
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/LaunchTemplate.html
@@ -98,7 +105,7 @@ class CdkRegionSpeceficStack(Stack):
             instance_type=_ec2.InstanceType.of(_ec2.InstanceClass.BURSTABLE4_GRAVITON, _ec2.InstanceSize.NANO),
             machine_image=machine_image_config,
             role=_iam.Role.from_role_name(self, "ovod_role_ec2", role_name=instance_role_name),
-            key_name=region_specefics['ssh_key_name'],
+            key_name=self.ssh_key_name,
             security_group=security_group,
             spot_options=launch_template_spot_options,
             user_data=_ec2.UserData.custom(user_data)

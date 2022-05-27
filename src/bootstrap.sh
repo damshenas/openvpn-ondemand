@@ -13,40 +13,46 @@ export oo_instace_id=$(curl -s http://169.254.169.254/latest/meta-data/instance-
 echo "Issuing DDNS update command"
 curl -s $oo_ddns_url
 
-## Installing docker
-yum update -y
-yum install -y docker conntrack
-service docker start
-
-# for spot support
-mkdir -p $oo_confdir
-aws s3 cp s3://$oo_artifact_bucket/interuptions/$oo_region/configs.tar.gz ./
-if [ -f "configs.tar.gz" ]; then # check s3 object if exist means we had spot interuption
-  tar -xzf configs.tar.gz -C $oo_confdir
-  aws s3 rm --recursive s3://$oo_artifact_bucket/interuptions/$oo_region # ensure the first provisions are fresh
-fi
-
 ## Preparing the keys and running the openvpn server
 docker pull $oo_docker_image
 
+# Restoring OpenVPN configs and certs if exist
+cd /tmp
+aws s3 cp s3://$oo_artifact_bucket/configs/$oo_region/openvpn.tar.gz ./
+if [ -f "openvpn.tar.gz" ]; then
+  mkdir -p $oo_confdir
+  tar -xzf openvpn.tar.gz -C $oo_confdir
+fi
+
+# Initializing the servicer if this is new
 if [ ! -f "$oo_confdir/openvpn.conf" ]; then
-  echo "Config not found. Generating config."
+  echo "OpenVPN configs are not found. Generating configs."
   docker run -v $oo_confdir:/etc/openvpn --rm $oo_docker_image ovpn_genconfig -u $oo_hostprotocol://$oo_domain:$oo_hostport
-fi
-
-if [ ! -f "$oo_confdir/pki/ca.crt" ]; then
-  echo "Cert not found. Generating certificates."
   docker run -v $oo_confdir:/etc/openvpn --rm -i -e "EASYRSA_BATCH=1" -e "EASYRSA_REQ_CN=My CN" $oo_docker_image ovpn_initpki nopass
+  cd $oo_confdir
+  tar -czf /tmp/openvpn.tar.gz .
+  aws s3 cp /tmp/openvpn.tar.gz s3://$oo_artifact_bucket/configs/$oo_region/openvpn.tar.gz 
+  echo "Uploaded the configs." && date
 fi
-
-# No need because we are using domain
-# sed -i "s/$oo_domain/$oo_server_ip/g" $oo_confdir/ovpn_env.sh
-# grep -rl "$oo_domain" $oo_confdir/pki | xargs sed -i "s/$oo_domain/$oo_server_ip/g"
 
 ## Replacing the default port before running openvpn
 sed -i "s|1194|$oo_hostport|" $oo_confdir/openvpn.conf
 sed -i "s|udp|$oo_hostprotocol|" $oo_confdir/openvpn.conf
 docker run -v $oo_confdir:/etc/openvpn -d -p $oo_hostport:$oo_hostport/$oo_hostprotocol --cap-add=NET_ADMIN $oo_docker_image
+
+# For spot interuption we restore user profiles
+cd /tmp
+aws s3 cp s3://$oo_artifact_bucket/interuptions/$oo_region/profiles.tar.gz ./
+if [ -f "profiles.tar.gz" ]; then # check s3 object if exist means we had spot interuption
+  # hot to restore some files in some directories?
+  tar -xzf profiles.tar.gz
+  cp -n pki/reqs/* $oo_confdir/pki/reqs/
+  cp -n pki/private/* $oo_confdir/pki/private/
+  cp -n pki/issued/* $oo_confdir/pki/issued/
+  cp -n pki/certs_by_serial/* $oo_confdir/pki/certs_by_serial/
+  cat pki/index.txt >> $oo_confdir/pki/index.txt
+  aws s3 rm --recursive s3://$oo_artifact_bucket/interuptions/$oo_region # ensure the first provisions are fresh
+fi
 
 ## Add the first profile
 sed -i "s|HOST_PORT|$oo_hostport|" $oo_profile_script

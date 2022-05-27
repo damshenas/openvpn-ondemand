@@ -6,6 +6,8 @@ package-lock.json
 notes
 sample*
 test*
+*.tar
+*.tar.gz
 
 # CDK asset staging directory
 .cdk.staging
