@@ -1,3 +1,4 @@
+import json
 from constructs import Construct
 from aws_cdk import (
     Duration, Stack, RemovalPolicy, PhysicalName,
@@ -14,6 +15,9 @@ class CdkMainStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, envir: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         
+        with open("src/configs.json", 'r') as f:
+            configs = json.load(f)
+
         ### S3 core
         lifecycle_rule = _s3.LifecycleRule(
                 enabled=True,
@@ -23,7 +27,7 @@ class CdkMainStack(Stack):
             )
 
         self.artifacts_bucket = _s3.Bucket(self, "{}-ovod-artifacts".format(envir),
-            bucket_name = PhysicalName.GENERATE_IF_NEEDED,
+            bucket_name = "{}-{}".format(envir, configs["s3_bucket_name"]),
             lifecycle_rules = [lifecycle_rule],
             removal_policy = RemovalPolicy.DESTROY,
             auto_delete_objects = True if envir == 'dev' else False,
@@ -50,16 +54,15 @@ class CdkMainStack(Stack):
         )
 
         ### lambda function
-        self.openvpn_builder_lambda = _lambda.Function(self, "{}_ovod_builder".format(envir),
-            function_name="{}_ovod_builder".format(envir),
+        self.openvpn_builder_lambda = _lambda.Function(self, "{}_OpenVPN_OnDemand_Main_Handler".format(envir.capitalize()),
+            function_name="{}_OpenVPN_OnDemand_Main_Handler".format(envir.capitalize()),
             runtime=_lambda.Runtime.PYTHON_3_9,
             architecture=_lambda.Architecture.ARM_64,
             log_retention=_logs.RetentionDays.THREE_MONTHS,
             timeout=Duration.seconds(10),
             environment={
                 "region": self.region,
-                "env": envir,
-                "debug_mode": 'false',
+                "environment": envir,
                 "artifacts_bucket": self.artifacts_bucket.bucket_name
             },
             handler="main.handler",
@@ -93,6 +96,9 @@ class CdkMainStack(Stack):
             effect=_iam.Effect.ALLOW, 
             resources=['*'], #TBU not secure
             actions=[
+                "ec2:ModifySpotFleetRequest",
+                "ec2:DescribeSpotFleetRequests",
+                "ec2:DescribeSpotFleetInstances",
                 "ec2:RunInstances", 
                 "ec2:TerminateInstances", 
                 "ec2:StartInstances",
@@ -127,7 +133,9 @@ class CdkMainStack(Stack):
         ovod_ec2_policy_profiles = _iam.PolicyStatement(
             effect=_iam.Effect.ALLOW, 
             resources=[
-                "{}/profiles/*".format(self.artifacts_bucket.bucket_arn)
+                "{}/profiles/*".format(self.artifacts_bucket.bucket_arn),
+                "{}/interuptions/*".format(self.artifacts_bucket.bucket_arn),
+                "{}/configs/*".format(self.artifacts_bucket.bucket_arn)
             ],
             actions=[
                 "s3:PutObject",
@@ -141,9 +149,18 @@ class CdkMainStack(Stack):
                 "s3:ListBucket"
             ])
 
+        ovod_ec2_policy_any = _iam.PolicyStatement(
+            effect=_iam.Effect.ALLOW, 
+            resources=["*"],
+            actions=[
+                "ec2:ModifySpotFleetRequest",
+                "ec2:DescribeSpotFleetRequests",
+                "ec2:DescribeSpotFleetInstances"
+            ])
+
         ### IAM roles instance profile 
         ovod_ec2_instance_role = _iam.Role(self, "{}_ovod_ec2_instance_role".format(envir),
-            role_name="{}_ovod_ec2_instance_role".format(envir),
+            role_name="{}_{}".format(envir, configs['instance_role_name']),
             managed_policies=[
                 _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")
             ],
@@ -152,6 +169,7 @@ class CdkMainStack(Stack):
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_scripts)
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_profiles)
         ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_generic)
+        ovod_ec2_instance_role.add_to_policy(ovod_ec2_policy_any)
 
         ovod_ec2_instance_profile = _iam.CfnInstanceProfile(self, "{}_ovod_ec2_instance_profile".format(envir),
             roles=[ovod_ec2_instance_role.role_name],
