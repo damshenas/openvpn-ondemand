@@ -2,7 +2,7 @@ import json, os
 from datetime import datetime
 from constructs import Construct
 from aws_cdk import (
-    Stack, Aws, Expiration, RemovalPolicy, Duration,
+    Stack, Aws, Expiration, RemovalPolicy, Duration, Fn,
     aws_ec2 as _ec2,
     aws_iam as _iam,
 )
@@ -19,7 +19,7 @@ class CdkRegionSpeceficStack(Stack):
 
         ### VPC
         ovod_vpc = _ec2.Vpc(self, '{}_ovod_vpc'.format(envir),
-            cidr = '10.10.0.0/24',
+            cidr = '10.10.0.0/16',
             max_azs = 5, # the higher the better for the chance of getting spot instance
             enable_dns_hostnames = True,
             enable_dns_support = True, 
@@ -119,8 +119,7 @@ class CdkRegionSpeceficStack(Stack):
                 launch_template_id=launch_template.launch_template_id
             ),
             overrides=[_ec2.CfnSpotFleet.LaunchTemplateOverridesProperty(
-                subnet_id="subnet-062fc05baec1eb838,subnet-082ecc568362c0f40,subnet-0a5bfc27a7a287a85"
-                # subnet_id=ovod_vpc.select_subnets(subnet_type=_ec2.SubnetType.PUBLIC).subnet_ids
+                subnet_id=Fn.join(',', ovod_vpc.select_subnets(subnet_type=_ec2.SubnetType.PUBLIC).subnet_ids)
             )]
         )
 
