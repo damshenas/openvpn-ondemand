@@ -1,4 +1,4 @@
-import json, os
+import json, os, boto3
 from datetime import datetime
 from constructs import Construct
 from aws_cdk import (
@@ -13,14 +13,17 @@ class CdkRegionSpeceficStack(Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         self.ssh_key_name = "{}.def.key".format(self.region)
+        self.instance_type=_ec2.InstanceType.of(_ec2.InstanceClass.BURSTABLE4_GRAVITON, _ec2.InstanceSize.NANO)
 
         with open("src/configs.json", 'r') as f:
             configs = json.load(f)
 
+        supported_azs = self.get_supported_azs(self.region, [self.instance_type.to_string()])
+
         ### VPC
         ovod_vpc = _ec2.Vpc(self, '{}_ovod_vpc'.format(envir),
-            cidr = '10.10.0.0/16',
-            max_azs = 5, # the higher the better for the chance of getting spot instance
+            cidr = '10.11.0.0/16',
+            availability_zones = supported_azs,
             enable_dns_hostnames = True,
             enable_dns_support = True, 
             subnet_configuration=[
@@ -102,7 +105,7 @@ class CdkRegionSpeceficStack(Stack):
             # launch_template_name='',
             block_devices=[block_device],
             instance_initiated_shutdown_behavior=_ec2.InstanceInitiatedShutdownBehavior.TERMINATE,
-            instance_type=_ec2.InstanceType.of(_ec2.InstanceClass.BURSTABLE4_GRAVITON, _ec2.InstanceSize.NANO),
+            instance_type=self.instance_type,
             machine_image=machine_image_config,
             role=_iam.Role.from_role_name(self, "ovod_role_ec2", role_name=instance_role_name),
             key_name=self.ssh_key_name,
@@ -163,3 +166,24 @@ class CdkRegionSpeceficStack(Stack):
                 # type="maintain" #??
             )
         )
+
+    # returns deduplicated list of azs that can be used for creating subnets
+    def get_supported_azs(self, region, instance_types):
+        suppported_azs = []
+        ec2_client = boto3.client('ec2',region)
+        response = ec2_client.describe_instance_type_offerings(
+            LocationType='availability-zone',
+            Filters=[
+                {
+                    'Name': 'instance-type',
+                    'Values': instance_types
+                },
+            ]
+        )
+        instance_type_offerings = response['InstanceTypeOfferings']
+        for offering in instance_type_offerings:
+            az = offering['Location']
+            suppported_azs.append(az)
+            
+        return list(dict.fromkeys(suppported_azs))
+
