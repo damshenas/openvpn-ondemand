@@ -11,7 +11,10 @@ export oo_instace_id=$(curl -s http://169.254.169.254/latest/meta-data/instance-
 
 ## Update DDNS ASAP
 echo "Issuing DDNS update command"
-curl -s $oo_ddns_url
+region_nospace="${oo_region//-/}"
+oo_ddns_url_v1="${oo_ddns_url/REGION/$region_nospace}"
+oo_ddns_url_v2="${oo_ddns_url_v1/EPIP/$oo_server_ip}"
+curl -s $oo_ddns_url_v2
 
 ## Preparing the keys and running the openvpn server
 docker pull $oo_docker_image

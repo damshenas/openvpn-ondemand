@@ -5,8 +5,8 @@ export oo_debug_mode={}
 export oo_artifact_bucket={}
 export oo_region={}
 export oo_first_username={}
-export oo_ddns_url={}
-export oo_domain={} #=none.example.com
+export oo_ddns_url="{}"
+export oo_domain="{}" #=none.example.com
 export oo_bootstrap_script=/tmp/bootstrap.sh
 export oo_profile_script=/tmp/profile.sh
 export oo_notice_script=/tmp/notice.sh

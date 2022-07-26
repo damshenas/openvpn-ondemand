@@ -22,7 +22,7 @@ class CdkRegionSpeceficStack(Stack):
 
         ### VPC
         ovod_vpc = _ec2.Vpc(self, '{}_ovod_vpc'.format(envir),
-            cidr = '10.11.0.0/16',
+            # cidr = '10.11.0.0/16',
             availability_zones = supported_azs,
             enable_dns_hostnames = True,
             enable_dns_support = True, 
@@ -75,9 +75,9 @@ class CdkRegionSpeceficStack(Stack):
             1 if envir == 'dev' else 1, #debug mode
             "{}-{}".format(envir, configs["s3_bucket_name"]), #artifact s3 bucket
             self.region, #region
-            configs["first_username"], #first user name
-            os.environ["DDNS_UPDATE_URL"], #DDNS update url from pipeline environment variable
-            os.environ["DDNS_DOMAIN_NAME"], #DDNS domain name from pipeline environment variable
+            configs["first_username"], #first user name            
+            os.environ["AFRAID_DDNS_UPDATE_URL"], #DDNS update url from pipeline environment variable,
+            "{}.{}".format(self.region.replace('-',''), os.environ["AFRAID_BASE_URL"])
         )
 
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/MachineImage.html
