@@ -76,7 +76,8 @@ class CdkRegionSpeceficStack(Stack):
             "{}-{}".format(envir, configs["s3_bucket_name"]), #artifact s3 bucket
             self.region, #region
             configs["first_username"], #first user name            
-            os.environ["AFRAID_DDNS_UPDATE_URL"], #DDNS update url from pipeline environment variable
+            os.environ["AFRAID_DDNS_UPDATE_URL"], #DDNS update url from pipeline environment variable,
+            "{}.{}".format(self.region.replace('-',''), os.environ["AFRAID_BASE_URL"])
         )
 
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ec2/MachineImage.html
