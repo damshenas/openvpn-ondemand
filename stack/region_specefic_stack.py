@@ -22,7 +22,7 @@ class CdkRegionSpeceficStack(Stack):
 
         ### VPC
         ovod_vpc = _ec2.Vpc(self, '{}_ovod_vpc'.format(envir),
-            cidr = '10.11.0.0/16',
+            # cidr = '10.11.0.0/16',
             availability_zones = supported_azs,
             enable_dns_hostnames = True,
             enable_dns_support = True, 
