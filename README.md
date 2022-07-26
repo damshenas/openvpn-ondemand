@@ -12,6 +12,7 @@ The solution provisions different AWS resources such as: S3, Lambda, SSM Params,
 4- configuration of aws cli
 
 # Configs
+export AFRAID_DDNS_UPDATE_URL=http://uuu:ppp@sync.afraid.org/u/?h=REGION.my.to&ip=EPIP
 export CDK_DEFAULT_ACCOUNT=111111111111
 export CDK_DEFAULT_REGION=us-east-1
 cdk bootstrap aws://$CDK_DEFAULT_ACCOUNT/$CDK_DEFAULT_REGION
